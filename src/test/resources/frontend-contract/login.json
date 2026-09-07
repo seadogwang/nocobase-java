@@ -1,0 +1,106 @@
+[
+  {
+    "name": "Login with valid credentials (colon route)",
+    "method": "POST",
+    "path": "/api/auth:signIn",
+    "body": {
+      "email": "admin@nocobase.com",
+      "password": "admin123"
+    },
+    "requiresAuth": false,
+    "expectedStatus": 200,
+    "expectedShape": {
+      "data.token": "string",
+      "data.user.id": "number",
+      "data.user.email": "string",
+      "data.user.nickname": "string"
+    }
+  },
+  {
+    "name": "Login with valid credentials (slash route)",
+    "method": "POST",
+    "path": "/api/auth/signIn",
+    "body": {
+      "email": "admin@nocobase.com",
+      "password": "admin123"
+    },
+    "requiresAuth": false,
+    "expectedStatus": 200,
+    "expectedShape": {
+      "data.token": "string",
+      "data.user.id": "number",
+      "data.user.email": "string"
+    }
+  },
+  {
+    "name": "Login with invalid credentials (colon route)",
+    "method": "POST",
+    "path": "/api/auth:signIn",
+    "body": {
+      "email": "admin@nocobase.com",
+      "password": "wrongpassword"
+    },
+    "requiresAuth": false,
+    "expectedStatus": 401,
+    "expectedShape": {
+      "errors[0].message": "string"
+    }
+  },
+  {
+    "name": "Login with invalid credentials (slash route)",
+    "method": "POST",
+    "path": "/api/auth/signIn",
+    "body": {
+      "email": "admin@nocobase.com",
+      "password": "wrongpassword"
+    },
+    "requiresAuth": false,
+    "expectedStatus": 401,
+    "expectedShape": {
+      "errors[0].message": "string"
+    }
+  },
+  {
+    "name": "Auth check with valid token (colon route)",
+    "method": "GET",
+    "path": "/api/auth:check",
+    "requiresAuth": true,
+    "expectedStatus": 200,
+    "expectedShape": {
+      "data.id": "number",
+      "data.email": "string",
+      "data.nickname": "string"
+    }
+  },
+  {
+    "name": "Auth check with valid token (slash route)",
+    "method": "GET",
+    "path": "/api/auth/check",
+    "requiresAuth": true,
+    "expectedStatus": 200,
+    "expectedShape": {
+      "data.id": "number",
+      "data.email": "string"
+    }
+  },
+  {
+    "name": "Auth check without token (colon route)",
+    "method": "GET",
+    "path": "/api/auth:check",
+    "requiresAuth": false,
+    "expectedStatus": 401,
+    "expectedShape": {
+      "errors[0].message": "string"
+    }
+  },
+  {
+    "name": "Auth check without token (slash route)",
+    "method": "GET",
+    "path": "/api/auth/check",
+    "requiresAuth": false,
+    "expectedStatus": 401,
+    "expectedShape": {
+      "errors[0].message": "string"
+    }
+  }
+]

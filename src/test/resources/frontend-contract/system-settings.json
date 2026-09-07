@@ -1,0 +1,96 @@
+[
+  {
+    "name": "Get system settings (colon route)",
+    "method": "GET",
+    "path": "/api/systemSettings:get",
+    "requiresAuth": true,
+    "expectedStatus": 200,
+    "expectedShape": {
+      "data": "map",
+      "data.title": "string"
+    }
+  },
+  {
+    "name": "Get system settings (slash route)",
+    "method": "GET",
+    "path": "/api/systemSettings/get",
+    "requiresAuth": true,
+    "expectedStatus": 200,
+    "expectedShape": {
+      "data": "map",
+      "data.title": "string"
+    }
+  },
+  {
+    "name": "Update system settings (colon route)",
+    "method": "POST",
+    "path": "/api/systemSettings:update",
+    "body": {
+      "title": "Contract Test Title"
+    },
+    "requiresAuth": true,
+    "expectedStatus": 200,
+    "expectedShape": {
+      "data.title": "string"
+    }
+  },
+  {
+    "name": "Update system settings (slash route)",
+    "method": "POST",
+    "path": "/api/systemSettings/update",
+    "body": {
+      "title": "Contract Test Slash"
+    },
+    "requiresAuth": true,
+    "expectedStatus": 200,
+    "expectedShape": {
+      "data.title": "string"
+    }
+  },
+  {
+    "name": "Get system settings without auth (colon route)",
+    "method": "GET",
+    "path": "/api/systemSettings:get",
+    "requiresAuth": false,
+    "expectedStatus": 403,
+    "expectedShape": {
+      "errors[0].message": "string"
+    }
+  },
+  {
+    "name": "Get system settings without auth (slash route)",
+    "method": "GET",
+    "path": "/api/systemSettings/get",
+    "requiresAuth": false,
+    "expectedStatus": 403,
+    "expectedShape": {
+      "errors[0].message": "string"
+    }
+  },
+  {
+    "name": "Update sensitive key rejected (colon route)",
+    "method": "POST",
+    "path": "/api/systemSettings:update",
+    "body": {
+      "password": "secret123"
+    },
+    "requiresAuth": true,
+    "expectedStatus": 400,
+    "expectedShape": {
+      "errors[0].message": "string"
+    }
+  },
+  {
+    "name": "Update sensitive key rejected (slash route)",
+    "method": "POST",
+    "path": "/api/systemSettings/update",
+    "body": {
+      "password": "secret123"
+    },
+    "requiresAuth": true,
+    "expectedStatus": 400,
+    "expectedShape": {
+      "errors[0].message": "string"
+    }
+  }
+]

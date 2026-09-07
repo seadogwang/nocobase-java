@@ -1,0 +1,72 @@
+[
+  {
+    "name": "List collections (colon route)",
+    "method": "GET",
+    "path": "/api/collections:list",
+    "requiresAuth": true,
+    "expectedStatus": 200,
+    "expectedShape": {
+      "data": "array",
+      "data[0].name": "string",
+      "data[0].title": "string",
+      "data[0].fields": "array"
+    }
+  },
+  {
+    "name": "List collections (slash route)",
+    "method": "GET",
+    "path": "/api/collections/list",
+    "requiresAuth": true,
+    "expectedStatus": 200,
+    "expectedShape": {
+      "data": "array",
+      "data[0].name": "string"
+    }
+  },
+  {
+    "name": "List collections without auth (colon route)",
+    "method": "GET",
+    "path": "/api/collections:list",
+    "requiresAuth": false,
+    "expectedStatus": 403,
+    "expectedShape": {
+      "errors[0].message": "string"
+    }
+  },
+  {
+    "name": "List collections without auth (slash route)",
+    "method": "GET",
+    "path": "/api/collections/list",
+    "requiresAuth": false,
+    "expectedStatus": 403,
+    "expectedShape": {
+      "errors[0].message": "string"
+    }
+  },
+  {
+    "name": "Create collection missing name (colon route)",
+    "method": "POST",
+    "path": "/api/collections:create",
+    "body": {
+      "title": "No Name"
+    },
+    "requiresAuth": true,
+    "expectedStatus": 400,
+    "expectedShape": {
+      "errors[0].message": "string"
+    }
+  },
+  {
+    "name": "Create collection missing name (slash route)",
+    "method": "POST",
+    "path": "/api/collections/create",
+    "body": {
+      "title": "No Name"
+    },
+    "requiresAuth": true,
+    "expectedStatus": 400,
+    "expectedShape": {
+      "errors[0].message": "string"
+    }
+  }
+]

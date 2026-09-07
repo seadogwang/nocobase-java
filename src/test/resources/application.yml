@@ -1,0 +1,37 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:testdb;MODE=PostgreSQL;DB_CLOSE_DELAY=-1
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  jpa:
+    hibernate:
+      # ddl-auto: create-drop is safe in test profile because:
+      # 1. Tests use an in-memory H2 database (jdbc:h2:mem:testdb) that is
+      #    discarded after each test run — no persistent data is at risk.
+      # 2. Flyway runs first and creates the baseline schema, then Hibernate
+      #    validates/resets against the JPA entity mappings, ensuring the
+      #    schema matches the current entity definitions.
+      # 3. create-drop at session end prevents cross-test data leakage.
+      # NEVER use create-drop in production — use Flyway migrations instead.
+      ddl-auto: create-drop
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.H2Dialect
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    locations: classpath:db/migration
+
+nocobase:
+  api-prefix: /api
+  jwt:
+    secret: test-secret-key-for-testing-only-must-be-at-least-256-bits-long
+    expiration: 86400000
+  data-source-encryption:
+    master-key: dGVzdC1rZXktZm9yLUFFUy0yNTYtR0NNLW1vZGUhISE=
+
+logging:
+  level:
+    root: WARN
+    com.nocobase: DEBUG

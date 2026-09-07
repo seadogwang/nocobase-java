@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NocoBase Java - Frontend Placeholder</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        .container {
+            text-align: center;
+            background: rgba(255, 255, 255, 0.1);
+            padding: 40px;
+            border-radius: 16px;
+            backdrop-filter: blur(10px);
+        }
+        h1 { margin: 0 0 20px 0; font-size: 2.5em; }
+        p { margin: 10px 0; font-size: 1.2em; opacity: 0.9; }
+        .status { 
+            display: inline-block; 
+            padding: 8px 16px; 
+            background: rgba(255,255,255,0.2); 
+            border-radius: 20px; 
+            margin-top: 20px;
+        }
+        .config {
+            margin-top: 30px;
+            padding: 15px;
+            background: rgba(0,0,0,0.2);
+            border-radius: 8px;
+            font-family: monospace;
+            font-size: 14px;
+            text-align: left;
+            white-space: pre;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 NocoBase Java Backend</h1>
+        <p>Spring Boot is running!</p>
+        <div class="status">✅ Static files served successfully</div>
+        <div class="config" id="config"></div>
+    </div>
+    <script type="module">
+        // This script will be injected after __NOCOBASE_CONFIG__
+        document.getElementById('config').textContent = 
+            'window.__NOCOBASE_CONFIG__ = ' + JSON.stringify(window.__NOCOBASE_CONFIG__, null, 2);
+    </script>
+</body>
+</html>

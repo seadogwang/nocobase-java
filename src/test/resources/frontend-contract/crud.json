@@ -1,0 +1,121 @@
+[
+  {
+    "name": "CRUD list users (colon route)",
+    "method": "GET",
+    "path": "/api/users:list",
+    "requiresAuth": true,
+    "expectedStatus": 200,
+    "expectedShape": {
+      "data": "array",
+      "meta.count": "number",
+      "meta.page": "number",
+      "meta.pageSize": "number"
+    }
+  },
+  {
+    "name": "CRUD list users (slash route)",
+    "method": "GET",
+    "path": "/api/users/list",
+    "requiresAuth": true,
+    "expectedStatus": 200,
+    "expectedShape": {
+      "data": "array",
+      "meta.count": "number"
+    }
+  },
+  {
+    "name": "CRUD get user by id (colon route)",
+    "method": "GET",
+    "path": "/api/users:get",
+    "query": {
+      "filterByTk": "1"
+    },
+    "requiresAuth": true,
+    "expectedStatus": 200,
+    "expectedShape": {
+      "data.id": "number",
+      "data.email": "string",
+      "data.nickname": "string"
+    }
+  },
+  {
+    "name": "CRUD get user by id (slash route)",
+    "method": "GET",
+    "path": "/api/users/get",
+    "query": {
+      "filterByTk": "1"
+    },
+    "requiresAuth": true,
+    "expectedStatus": 200,
+    "expectedShape": {
+      "data.id": "number",
+      "data.email": "string"
+    }
+  },
+  {
+    "name": "CRUD list without auth (colon route)",
+    "method": "GET",
+    "path": "/api/users:list",
+    "requiresAuth": false,
+    "expectedStatus": 403,
+    "expectedShape": {
+      "errors[0].message": "string"
+    }
+  },
+  {
+    "name": "CRUD list without auth (slash route)",
+    "method": "GET",
+    "path": "/api/users/list",
+    "requiresAuth": false,
+    "expectedStatus": 403,
+    "expectedShape": {
+      "errors[0].message": "string"
+    }
+  },
+  {
+    "name": "CRUD create user missing required field (colon route)",
+    "method": "POST",
+    "path": "/api/users:create",
+    "body": {
+      "nickname": "NoEmail"
+    },
+    "requiresAuth": true,
+    "expectedStatus": 400,
+    "expectedShape": {
+      "errors[0].message": "string"
+    }
+  },
+  {
+    "name": "CRUD create user missing required field (slash route)",
+    "method": "POST",
+    "path": "/api/users/create",
+    "body": {
+      "nickname": "NoEmail"
+    },
+    "requiresAuth": true,
+    "expectedStatus": 400,
+    "expectedShape": {
+      "errors[0].message": "string"
+    }
+  },
+  {
+    "name": "CRUD list non-existent collection (colon route)",
+    "method": "GET",
+    "path": "/api/nonexistent_xyz_123:list",
+    "requiresAuth": true,
+    "expectedStatus": 404,
+    "expectedShape": {
+      "errors[0].message": "string"
+    }
+  },
+  {
+    "name": "CRUD list non-existent collection (slash route)",
+    "method": "GET",
+    "path": "/api/nonexistent_xyz_123/list",
+    "requiresAuth": true,
+    "expectedStatus": 404,
+    "expectedShape": {
+      "errors[0].message": "string"
+    }
+  }
+]

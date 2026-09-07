@@ -1,0 +1,826 @@
+{
+  "trace": "noco-base-frontend-startup",
+  "description": "Simulates a full frontend startup sequence: login, auth check, init, plugin load, system settings, UI schema, collection manager, field manager, basic CRUD, ACL query, data sources read-only paths. Supports variable extraction, request dependencies, negative assertions, and field shape verification.",
+  "variables": {},
+  "steps": [
+    {
+      "name": "Login - obtain auth token",
+      "method": "POST",
+      "path": "/api/auth:signIn",
+      "body": {
+        "email": "admin@nocobase.com",
+        "password": "admin123"
+      },
+      "requiresAuth": false,
+      "expectedStatus": 200,
+      "expectedShape": {
+        "data.token": "string",
+        "data.user.id": "number",
+        "data.user.email": "string",
+        "data.user.nickname": "string"
+      },
+      "extract": {
+        "authToken": "$.data.token",
+        "userId": "$.data.user.id"
+      }
+    },
+    {
+      "name": "[NEGATIVE] Login with wrong password",
+      "method": "POST",
+      "path": "/api/auth:signIn",
+      "body": {
+        "email": "admin@nocobase.com",
+        "password": "WRONG_PASSWORD"
+      },
+      "requiresAuth": false,
+      "expectedStatus": 401,
+      "negativeAssertion": true,
+      "expectedShape": {
+        "errors[0].message": "string"
+      },
+      "assertNoField": ["data.token"]
+    },
+    {
+      "name": "Auth check - verify token is valid",
+      "method": "GET",
+      "path": "/api/auth:check",
+      "requiresAuth": true,
+      "expectedStatus": 200,
+      "expectedShape": {
+        "data.id": "number",
+        "data.email": "string",
+        "data.nickname": "string"
+      }
+    },
+    {
+      "name": "Auth user - get current user profile",
+      "method": "GET",
+      "path": "/api/auth:user",
+      "requiresAuth": true,
+      "expectedStatus": 200,
+      "expectedShape": {
+        "data.id": "number",
+        "data.email": "string",
+        "data.nickname": "string"
+      },
+      "assertNoField": ["data.password"]
+    },
+    {
+      "name": "[NEGATIVE] Auth check without token",
+      "method": "GET",
+      "path": "/api/auth:check",
+      "requiresAuth": false,
+      "expectedStatus": 401,
+      "negativeAssertion": true,
+      "expectedShape": {
+        "errors[0].message": "string"
+      }
+    },
+    {
+      "name": "Application plugins - list enabled",
+      "method": "GET",
+      "path": "/api/applicationPlugins:listEnabled",
+      "requiresAuth": true,
+      "expectedStatus": 200,
+      "expectedShape": {
+        "data": "array",
+        "data[0].name": "string",
+        "data[0].packageName": "string",
+        "data[0].enabled": "boolean"
+      }
+    },
+    {
+      "name": "[NEGATIVE] Application plugins without auth",
+      "method": "GET",
+      "path": "/api/applicationPlugins:listEnabled",
+      "requiresAuth": false,
+      "expectedStatus": 403,
+      "negativeAssertion": true,
+      "expectedShape": {
+        "errors[0].message": "string"
+      }
+    },
+    {
+      "name": "Plugins - list all",
+      "method": "GET",
+      "path": "/api/plugins:list",
+      "requiresAuth": true,
+      "expectedStatus": 200,
+      "expectedShape": {
+        "data": "array",
+        "data[0].name": "string",
+        "data[0].packageName": "string"
+      }
+    },
+    {
+      "name": "Plugins - list enabled",
+      "method": "GET",
+      "path": "/api/plugins:enabled",
+      "requiresAuth": true,
+      "expectedStatus": 200,
+      "expectedShape": {
+        "data": "array"
+      }
+    },
+    {
+      "name": "System settings - get settings",
+      "method": "GET",
+      "path": "/api/systemSettings:get",
+      "requiresAuth": true,
+      "expectedStatus": 200,
+      "expectedShape": {
+        "data": "map",
+        "data.title": "string"
+      },
+      "assertNoField": ["data.jwtSecret", "data.dbPassword", "data.password"]
+    },
+    {
+      "name": "[NEGATIVE] System settings update with sensitive key",
+      "method": "POST",
+      "path": "/api/systemSettings:update",
+      "requiresAuth": true,
+      "expectedStatus": 400,
+      "negativeAssertion": true,
+      "body": {
+        "password": "secret_value"
+      },
+      "expectedShape": {
+        "errors[0].message": "string"
+      }
+    },
+    {
+      "name": "[NEGATIVE] System settings without auth",
+      "method": "GET",
+      "path": "/api/systemSettings:get",
+      "requiresAuth": false,
+      "expectedStatus": 403,
+      "negativeAssertion": true,
+      "expectedShape": {
+        "errors[0].message": "string"
+      }
+    },
+    {
+      "name": "UI schema - get tree",
+      "method": "GET",
+      "path": "/api/uiSchemas:getTree",
+      "requiresAuth": true,
+      "expectedStatus": 200,
+      "expectedShape": {
+        "data": "map",
+        "data.x-uid": "string",
+        "data.type": "string"
+      },
+      "extract": {
+        "rootUid": "$.data.x-uid"
+      }
+    },
+    {
+      "name": "UI schema - get tree by uid",
+      "method": "GET",
+      "path": "/api/uiSchemas:getTreeByUid",
+      "query": {
+        "uid": "{{rootUid}}"
+      },
+      "requiresAuth": true,
+      "dependsOn": "rootUid",
+      "expectedStatus": 200,
+      "expectedShape": {
+        "data.x-uid": "string",
+        "data.type": "string"
+      }
+    },
+    {
+      "name": "UI schema - get JSON schema",
+      "method": "GET",
+      "path": "/api/uiSchemas:getJsonSchema",
+      "query": {
+        "uid": "{{rootUid}}"
+      },
+      "requiresAuth": true,
+      "dependsOn": "rootUid",
+      "expectedStatus": 200,
+      "expectedShape": {
+        "data": "map"
+      }
+    },
+    {
+      "name": "UI schema - get tree by schemaUid",
+      "method": "GET",
+      "path": "/api/uiSchemas:getTreeBySchemaUid",
+      "query": {
+        "schemaUid": "root"
+      },
+      "requiresAuth": true,
+      "expectedStatus": 200,
+      "expectedShape": {
+        "data.x-uid": "string"
+      }
+    },
+    {
+      "name": "[NEGATIVE] UI schema getTree without auth",
+      "method": "GET",
+      "path": "/api/uiSchemas:getTree",
+      "requiresAuth": false,
+      "expectedStatus": 403,
+      "negativeAssertion": true,
+      "expectedShape": {
+        "errors[0].message": "string"
+      }
+    },
+    {
+      "name": "Collection manager - list collections",
+      "method": "GET",
+      "path": "/api/collections:list",
+      "requiresAuth": true,
+      "expectedStatus": 200,
+      "expectedShape": {
+        "data": "array",
+        "data[0].name": "string",
+        "data[0].title": "string",
+        "data[0].fields": "array"
+      }
+    },
+    {
+      "name": "[NEGATIVE] Collection manager list without auth",
+      "method": "GET",
+      "path": "/api/collections:list",
+      "requiresAuth": false,
+      "expectedStatus": 403,
+      "negativeAssertion": true,
+      "expectedShape": {
+        "errors[0].message": "string"
+      }
+    },
+    {
+      "name": "CRUD - list users",
+      "method": "GET",
+      "path": "/api/users:list",
+      "requiresAuth": true,
+      "expectedStatus": 200,
+      "expectedShape": {
+        "data": "array",
+        "meta.count": "number",
+        "meta.page": "number",
+        "meta.pageSize": "number"
+      },
+      "assertNoField": ["data[0].password"]
+    },
+    {
+      "name": "CRUD - get user by id",
+      "method": "GET",
+      "path": "/api/users:get",
+      "query": {
+        "filterByTk": "1"
+      },
+      "requiresAuth": true,
+      "expectedStatus": 200,
+      "expectedShape": {
+        "data.id": "number",
+        "data.email": "string",
+        "data.nickname": "string"
+      },
+      "assertNoField": ["data.password"]
+    },
+    {
+      "name": "CRUD - list roles",
+      "method": "GET",
+      "path": "/api/roles:list",
+      "requiresAuth": true,
+      "expectedStatus": 200,
+      "expectedShape": {
+        "data": "array",
+        "meta.count": "number"
+      }
+    },
+    {
+      "name": "[NEGATIVE] CRUD - list users without auth",
+      "method": "GET",
+      "path": "/api/users:list",
+      "requiresAuth": false,
+      "expectedStatus": 403,
+      "negativeAssertion": true,
+      "expectedShape": {
+        "errors[0].message": "string"
+      }
+    },
+    {
+      "name": "[NEGATIVE] CRUD - list non-existent collection returns 404",
+      "method": "GET",
+      "path": "/api/nonexistent_xyz_123:list",
+      "requiresAuth": true,
+      "expectedStatus": 404,
+      "negativeAssertion": true,
+      "expectedShape": {
+        "errors[0].message": "string"
+      }
+    },
+    {
+      "name": "ACL - list role resources",
+      "method": "GET",
+      "path": "/api/acl/roleResources:list",
+      "requiresAuth": true,
+      "expectedStatus": 200,
+      "expectedShape": {
+        "data": "array"
+      }
+    },
+    {
+      "name": "[NEGATIVE] ACL - list role resources without auth",
+      "method": "GET",
+      "path": "/api/acl/roleResources:list",
+      "requiresAuth": false,
+      "expectedStatus": 403,
+      "negativeAssertion": true,
+      "expectedShape": {
+        "errors[0].message": "string"
+      }
+    },
+    {
+      "name": "Data sources - list (read-only path)",
+      "method": "GET",
+      "path": "/api/dataSources:list",
+      "requiresAuth": true,
+      "expectedStatus": 200,
+      "expectedShape": {
+        "data": "array"
+      },
+      "assertNoField": ["data[0].password"]
+    },
+    {
+      "name": "[NEGATIVE] Data sources - list without auth (admin required)",
+      "method": "GET",
+      "path": "/api/dataSources:list",
+      "requiresAuth": false,
+      "expectedStatus": 403,
+      "negativeAssertion": true,
+      "expectedShape": {
+        "errors[0].message": "string"
+      }
+    },
+    {
+      "name": "Data sources - get by key (reserved key returns 400)",
+      "method": "GET",
+      "path": "/api/dataSources:get",
+      "query": {
+        "key": "main"
+      },
+      "requiresAuth": true,
+      "expectedStatus": 400,
+      "expectedShape": {
+        "errors[0].message": "string"
+      }
+    },
+    {
+      "name": "Auth - logout",
+      "method": "POST",
+      "path": "/api/auth:logout",
+      "requiresAuth": false,
+      "expectedStatus": 200,
+      "expectedShape": {
+        "data.message": "string"
+      }
+    },
+    {
+      "name": "UI schema - get parent JSON schema",
+      "method": "GET",
+      "path": "/api/uiSchemas:getParentJsonSchema",
+      "query": {
+        "uid": "root"
+      },
+      "requiresAuth": true,
+      "expectedStatus": 200,
+      "expectedShape": {
+        "data": "map"
+      }
+    },
+    {
+      "name": "UI schema templates - list",
+      "method": "GET",
+      "path": "/api/uiSchemaTemplates:list",
+      "requiresAuth": true,
+      "expectedStatus": 200,
+      "expectedShape": {
+        "data": "array"
+      }
+    },
+    {
+      "name": "UI schema templates - get non-existent returns 404",
+      "method": "GET",
+      "path": "/api/uiSchemaTemplates:get",
+      "query": {
+        "name": "nonexistent_template_xyz"
+      },
+      "requiresAuth": true,
+      "expectedStatus": 404,
+      "expectedShape": {
+        "errors[0].message": "string"
+      }
+    },
+    {
+      "name": "Data sources - get verify masked fields",
+      "method": "GET",
+      "path": "/api/dataSources:get",
+      "query": {
+        "key": "main"
+      },
+      "requiresAuth": true,
+      "expectedStatus": 400,
+      "expectedShape": {
+        "errors[0].message": "string"
+      }
+    },
+    {
+      "name": "Plugins - enable",
+      "method": "POST",
+      "path": "/api/plugins:enable",
+      "query": {
+        "name": "users"
+      },
+      "requiresAuth": true,
+      "expectedStatus": 200,
+      "expectedShape": {
+        "data.name": "string",
+        "data.enabled": "boolean"
+      }
+    },
+    {
+      "name": "Plugins - disable",
+      "method": "POST",
+      "path": "/api/plugins:disable",
+      "query": {
+        "name": "test_disable_plugin"
+      },
+      "requiresAuth": true,
+      "expectedStatus": 400,
+      "expectedShape": {
+        "errors[0].message": "string"
+      }
+    },
+    {
+      "name": "Plugins - uninstall",
+      "method": "POST",
+      "path": "/api/plugins:uninstall",
+      "query": {
+        "name": "test_uninstall_plugin"
+      },
+      "requiresAuth": true,
+      "expectedStatus": 400,
+      "expectedShape": {
+        "errors[0].message": "string"
+      }
+    },
+    {
+      "name": "Application plugins - uninstall",
+      "method": "POST",
+      "path": "/api/applicationPlugins:uninstall",
+      "query": {
+        "name": "test_uninstall_plugin"
+      },
+      "requiresAuth": true,
+      "expectedStatus": 400,
+      "expectedShape": {
+        "errors[0].message": "string"
+      }
+    },
+    {
+      "name": "Application plugins - remove",
+      "method": "POST",
+      "path": "/api/applicationPlugins:remove",
+      "query": {
+        "name": "test_remove_plugin"
+      },
+      "requiresAuth": true,
+      "expectedStatus": 400,
+      "expectedShape": {
+        "errors[0].message": "string"
+      }
+    },
+    {
+      "name": "Collection manager - dryRun",
+      "method": "POST",
+      "path": "/api/collections:dryRun",
+      "requiresAuth": true,
+      "expectedStatus": 200,
+      "body": {
+        "name": "trace_dryrun_test",
+        "title": "Trace DryRun",
+        "type": "physical",
+        "fields": [
+          { "name": "id", "type": "bigInt", "primaryKey": true }
+        ]
+      },
+      "expectedShape": {
+        "data": "array"
+      }
+    },
+    {
+      "name": "Fields - destroy (nonexistent collection returns 404)",
+      "method": "POST",
+      "path": "/api/fields:destroy",
+      "requiresAuth": true,
+      "expectedStatus": 404,
+      "body": {
+        "collectionName": "nonexistent",
+        "name": "nonexistent"
+      },
+      "expectedShape": {
+        "errors[0].message": "string"
+      }
+    },
+    {
+      "name": "Auth - refresh token",
+      "method": "POST",
+      "path": "/api/auth:refresh",
+      "requiresAuth": true,
+      "expectedStatus": 200,
+      "expectedShape": {
+        "data.token": "string"
+      },
+      "extract": {
+        "authToken": "$.data.token"
+      }
+    },
+    {
+      "name": "[NEGATIVE] Auth - refresh without token",
+      "method": "POST",
+      "path": "/api/auth:refresh",
+      "requiresAuth": false,
+      "expectedStatus": 401,
+      "negativeAssertion": true,
+      "expectedShape": {
+        "errors[0].message": "string"
+      },
+      "assertNoField": ["data.token"]
+    },
+    {
+      "name": "CRUD - create user",
+      "method": "POST",
+      "path": "/api/users:create",
+      "requiresAuth": true,
+      "body": {
+        "email": "trace-test-{{timestamp}}@nocobase.com",
+        "nickname": "Trace Test",
+        "password": "test123"
+      },
+      "expectedStatus": 200,
+      "expectedShape": {
+        "data.id": "number",
+        "data.email": "string"
+      },
+      "extract": {
+        "createdUserId": "$.data.id"
+      }
+    },
+    {
+      "name": "CRUD - update user",
+      "method": "POST",
+      "path": "/api/users:update",
+      "requiresAuth": true,
+      "dependsOn": "createdUserId",
+      "query": {
+        "filterByTk": "{{createdUserId}}"
+      },
+      "body": {
+        "nickname": "Trace Updated"
+      },
+      "expectedStatus": 200,
+      "expectedShape": {
+        "data.id": "number",
+        "data.nickname": "string"
+      }
+    },
+    {
+      "name": "CRUD - destroy user",
+      "method": "POST",
+      "path": "/api/users:destroy",
+      "requiresAuth": true,
+      "dependsOn": "createdUserId",
+      "query": {
+        "filterByTk": "{{createdUserId}}"
+      },
+      "expectedStatus": 200,
+      "expectedShape": {
+        "data.id": "number"
+      }
+    },
+    {
+      "name": "Association - list user roles",
+      "method": "GET",
+      "path": "/api/users.roles:list",
+      "requiresAuth": true,
+      "query": {
+        "filterByTk": "1"
+      },
+      "expectedStatus": 200,
+      "expectedShape": {
+        "data": "array"
+      }
+    },
+    {
+      "name": "Association - add role to user",
+      "method": "POST",
+      "path": "/api/users.roles:add",
+      "requiresAuth": true,
+      "query": {
+        "filterByTk": "1"
+      },
+      "body": {
+        "targetId": 2
+      },
+      "expectedStatus": 200,
+      "expectedShape": {
+        "data.message": "string"
+      }
+    },
+    {
+      "name": "Association - remove role from user",
+      "method": "POST",
+      "path": "/api/users.roles:remove",
+      "requiresAuth": true,
+      "query": {
+        "filterByTk": "1"
+      },
+      "body": {
+        "targetId": 2
+      },
+      "expectedStatus": 200,
+      "expectedShape": {
+        "data.message": "string"
+      }
+    },
+    {
+      "name": "Association - set user roles",
+      "method": "POST",
+      "path": "/api/users.roles:set",
+      "requiresAuth": true,
+      "query": {
+        "filterByTk": "1"
+      },
+      "body": {
+        "targetIds": [1, 2]
+      },
+      "expectedStatus": 200,
+      "expectedShape": {
+        "data.message": "string"
+      }
+    },
+    {
+      "name": "Data sources - create",
+      "method": "POST",
+      "path": "/api/dataSources:create",
+      "requiresAuth": true,
+      "body": {
+        "key": "trace-test-ds-{{timestamp}}",
+        "url": "jdbc:h2:mem:trace_test_ds_{{timestamp}};DB_CLOSE_DELAY=-1",
+        "displayName": "Trace Test DS",
+        "driverClassName": "org.h2.Driver",
+        "username": "sa",
+        "password": "",
+        "dialect": "h2"
+      },
+      "expectedStatus": 200,
+      "expectedShape": {
+        "data.key": "string",
+        "data.displayName": "string"
+      },
+      "extract": {
+        "dsKey": "$.data.key"
+      }
+    },
+    {
+      "name": "[NEGATIVE] Data sources - create without auth",
+      "method": "POST",
+      "path": "/api/dataSources:create",
+      "requiresAuth": false,
+      "expectedStatus": 403,
+      "negativeAssertion": true,
+      "body": {
+        "key": "unauth-ds",
+        "url": "jdbc:h2:mem:unauth;DB_CLOSE_DELAY=-1",
+        "displayName": "Unauth DS",
+        "driverClassName": "org.h2.Driver",
+        "username": "sa",
+        "password": "",
+        "dialect": "h2"
+      },
+      "expectedShape": {
+        "errors[0].message": "string"
+      }
+    },
+    {
+      "name": "Data sources - test connection",
+      "method": "POST",
+      "path": "/api/dataSources:testConnection",
+      "requiresAuth": true,
+      "body": {
+        "url": "jdbc:h2:mem:trace_test_conn;DB_CLOSE_DELAY=-1",
+        "driverClassName": "org.h2.Driver",
+        "username": "sa",
+        "password": ""
+      },
+      "expectedStatus": 200,
+      "expectedShape": {
+        "data.success": "boolean",
+        "data.message": "string"
+      }
+    },
+    {
+      "name": "Data sources - destroy",
+      "method": "POST",
+      "path": "/api/dataSources:destroy",
+      "requiresAuth": true,
+      "dependsOn": "dsKey",
+      "body": {
+        "key": "{{dsKey}}"
+      },
+      "expectedStatus": 200,
+      "expectedShape": {
+        "data.key": "string",
+        "data.message": "string"
+      }
+    },
+    {
+      "name": "Fields - create",
+      "method": "POST",
+      "path": "/api/fields:create",
+      "requiresAuth": true,
+      "body": {
+        "collectionName": "users",
+        "name": "trace_test_field",
+        "type": "string"
+      },
+      "expectedStatus": 200,
+      "expectedShape": {
+        "data.name": "string",
+        "data.type": "string"
+      }
+    },
+    {
+      "name": "[NEGATIVE] Fields - create without auth",
+      "method": "POST",
+      "path": "/api/fields:create",
+      "requiresAuth": false,
+      "expectedStatus": 403,
+      "negativeAssertion": true,
+      "body": {
+        "collectionName": "users",
+        "name": "trace_test_field_unauth",
+        "type": "string"
+      },
+      "expectedShape": {
+        "errors[0].message": "string"
+      }
+    },
+    {
+      "name": "Fields - destroy",
+      "method": "POST",
+      "path": "/api/fields:destroy",
+      "requiresAuth": true,
+      "body": {
+        "collectionName": "users",
+        "name": "trace_test_field"
+      },
+      "expectedStatus": 200,
+      "expectedShape": {
+        "data.name": "string",
+        "data.message": "string"
+      }
+    },
+    {
+      "name": "[NEGATIVE] Data sources - create with invalid URL",
+      "method": "POST",
+      "path": "/api/dataSources:create",
+      "requiresAuth": true,
+      "expectedStatus": 400,
+      "negativeAssertion": true,
+      "body": {
+        "key": "invalid-url-ds-{{timestamp}}",
+        "url": "jdbc:mysql://invalid-host:3306/nonexistent",
+        "displayName": "Invalid URL DS",
+        "driverClassName": "com.mysql.cj.jdbc.Driver",
+        "username": "root",
+        "password": "invalid",
+        "dialect": "mysql"
+      },
+      "expectedShape": {
+        "errors[0].message": "string"
+      }
+    },
+    {
+      "name": "[NEGATIVE] Fields - create on non-existent collection",
+      "method": "POST",
+      "path": "/api/fields:create",
+      "requiresAuth": true,
+      "expectedStatus": 404,
+      "negativeAssertion": true,
+      "body": {
+        "collectionName": "nonexistent_xyz",
+        "name": "trace_field",
+        "type": "string"
+      },
+      "expectedShape": {
+        "errors[0].message": "string"
+      }
+    }
+  ]
+}

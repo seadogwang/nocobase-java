@@ -1,0 +1,22 @@
+﻿# Build outputs
+/target/
+*.class
+*.jar
+*.war
+
+# Runtime/local data
+/storage/
+/test-token.txt
+
+# IDE/editor
+.idea/
+.vscode/
+*.iml
+
+# Agent/local tooling
+.claude/
+.runtime*/
+
+# Logs
+*.log
+/runtime_logs/

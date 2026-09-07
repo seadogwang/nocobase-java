@@ -1,0 +1,16 @@
+# Development profile: enables detailed logging for debugging
+# and provides an explicit dev JWT secret so the application starts
+# without requiring the NOCOBASE_JWT_SECRET environment variable.
+logging:
+  level:
+    root: INFO
+    com.nocobase: DEBUG
+    org.springframework.web: DEBUG
+    org.hibernate.SQL: DEBUG
+    org.hibernate.type.descriptor.sql.BasicBinder: TRACE
+
+nocobase:
+  jwt:
+    secret: nocobase-dev-secret-key-for-development-only-must-be-at-least-256-bits-long
+  data-source-encryption:
+    master-key: ZGV2LW1hc3Rlci1rZXktZm9yLUFFUzI1NiEhISEhISE=

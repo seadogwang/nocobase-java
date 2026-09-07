@@ -1,0 +1,88 @@
+server:
+  port: 13000
+  servlet:
+    context-path: /
+
+spring:
+  application:
+    name: nocobase-java
+
+  # Database configuration - H2 for development, PostgreSQL for production
+  datasource:
+    url: jdbc:h2:file:./storage/db/nocobase;AUTO_SERVER=TRUE;MODE=PostgreSQL
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+
+  jpa:
+    hibernate:
+      # ddl-auto: none — Hibernate will NOT create/alter tables.
+      # Metadata tables are managed by Flyway migrations.
+      # Dynamic business collection DDL is handled by DdlSynchronizer at runtime.
+      ddl-auto: none
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.H2Dialect
+
+  # Flyway for metadata table migrations
+  # Dynamic business collection DDL stays with DdlSynchronizer, not in migrations.
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    locations: classpath:db/migration
+
+  # File upload
+  servlet:
+    multipart:
+      max-file-size: 100MB
+      max-request-size: 100MB
+
+  # Jackson
+  jackson:
+    default-property-inclusion: non_null
+    serialization:
+      write-dates-as-timestamps: false
+
+# NocoBase configuration
+nocobase:
+  api-prefix: /api
+  jwt:
+    secret: ${NOCOBASE_JWT_SECRET:}
+    expiration: 86400000  # 24 hours in milliseconds
+
+  # P0-A: Encryption master key for external data source passwords.
+  # Must be a base64-encoded 256-bit (32-byte) key for AES-256-GCM.
+  # Override this in production with a securely generated key.
+  # Generate: openssl rand -base64 32
+  data-source-encryption:
+    master-key: ${NOCOBASE_DATA_SOURCE_ENCRYPTION_MASTER_KEY:}
+
+  # External data sources (multi-datasource support).
+  # The "main" key is reserved and auto-created from spring.datasource.
+  # Each key must match: [A-Za-z][A-Za-z0-9_-]{0,63}
+  # External datasources do NOT affect JPA/Flyway metadata on main.
+  # Only h2 and postgresql dialects are supported. MySQL is explicitly unsupported.
+  # External data sources are always read-only (read-only=true is enforced).
+  # data-sources:
+  #   analytics:
+  #     url: jdbc:postgresql://localhost:5432/analytics
+  #     driver-class-name: org.postgresql.Driver
+  #     username: analytics_user
+  #     password: secret
+  #     enabled: true
+  #     dialect: postgresql
+  #     read-only: true
+
+# Logging
+logging:
+  level:
+    root: INFO
+    com.nocobase: INFO
+    org.springframework.web: INFO

@@ -1,0 +1,69 @@
+[
+  {
+    "name": "List enabled plugins (colon route)",
+    "method": "GET",
+    "path": "/api/applicationPlugins:listEnabled",
+    "requiresAuth": true,
+    "expectedStatus": 200,
+    "expectedShape": {
+      "data": "array",
+      "data[0].name": "string",
+      "data[0].packageName": "string",
+      "data[0].enabled": "boolean"
+    }
+  },
+  {
+    "name": "List enabled plugins (slash route)",
+    "method": "GET",
+    "path": "/api/applicationPlugins/listEnabled",
+    "requiresAuth": true,
+    "expectedStatus": 200,
+    "expectedShape": {
+      "data": "array",
+      "data[0].name": "string"
+    }
+  },
+  {
+    "name": "List all plugins (colon route)",
+    "method": "GET",
+    "path": "/api/plugins:list",
+    "requiresAuth": true,
+    "expectedStatus": 200,
+    "expectedShape": {
+      "data": "array",
+      "data[0].name": "string",
+      "data[0].packageName": "string"
+    }
+  },
+  {
+    "name": "List all plugins (slash route)",
+    "method": "GET",
+    "path": "/api/plugins/list",
+    "requiresAuth": true,
+    "expectedStatus": 200,
+    "expectedShape": {
+      "data": "array",
+      "data[0].name": "string"
+    }
+  },
+  {
+    "name": "List enabled plugins without auth (colon route)",
+    "method": "GET",
+    "path": "/api/applicationPlugins:listEnabled",
+    "requiresAuth": false,
+    "expectedStatus": 403,
+    "expectedShape": {
+      "errors[0].message": "string"
+    }
+  },
+  {
+    "name": "List enabled plugins without auth (slash route)",
+    "method": "GET",
+    "path": "/api/applicationPlugins/listEnabled",
+    "requiresAuth": false,
+    "expectedStatus": 403,
+    "expectedShape": {
+      "errors[0].message": "string"
+    }
+  }
+]

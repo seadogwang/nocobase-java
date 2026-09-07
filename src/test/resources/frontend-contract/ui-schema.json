@@ -1,0 +1,45 @@
+[
+  {
+    "name": "Get UI schema tree (colon route)",
+    "method": "GET",
+    "path": "/api/uiSchemas:getTree",
+    "requiresAuth": true,
+    "expectedStatus": 200,
+    "expectedShape": {
+      "data": "map",
+      "data.x-uid": "string",
+      "data.type": "string"
+    }
+  },
+  {
+    "name": "Get UI schema tree (slash route)",
+    "method": "GET",
+    "path": "/api/uiSchemas/getTree",
+    "requiresAuth": true,
+    "expectedStatus": 200,
+    "expectedShape": {
+      "data": "map",
+      "data.x-uid": "string"
+    }
+  },
+  {
+    "name": "Get UI schema tree without auth (colon route)",
+    "method": "GET",
+    "path": "/api/uiSchemas:getTree",
+    "requiresAuth": false,
+    "expectedStatus": 403,
+    "expectedShape": {
+      "errors[0].message": "string"
+    }
+  },
+  {
+    "name": "Get UI schema tree without auth (slash route)",
+    "method": "GET",
+    "path": "/api/uiSchemas/getTree",
+    "requiresAuth": false,
+    "expectedStatus": 403,
+    "expectedShape": {
+      "errors[0].message": "string"
+    }
+  }
+]
