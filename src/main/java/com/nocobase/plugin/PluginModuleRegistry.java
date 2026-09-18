@@ -8,6 +8,7 @@ import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Collections;
 import java.util.List;
@@ -20,7 +21,7 @@ import java.util.stream.Collectors;
  * Registry for built-in plugin module definitions.
  *
  * <p>Holds the authoritative list of built-in plugins and syncs them with the
- * {@code application_plugins} table on startup (idempotent — ensures all built-in
+ * {@code application_plugins} table on startup (idempotent -- ensures all built-in
  * plugins exist with correct metadata). Provides methods for querying and managing
  * plugin state.</p>
  *
@@ -151,16 +152,23 @@ public class PluginModuleRegistry {
      * @throws ForbiddenException         if the plugin is a built-in system module
      * @throws IllegalArgumentException if the plugin is not found
      */
+    @Transactional
     public ApplicationPlugin disable(String name) {
-        if (SYSTEM_PLUGIN_NAMES.contains(name)) {
-            throw new ForbiddenException("Cannot disable system plugin: " + name);
+        try {
+            if (SYSTEM_PLUGIN_NAMES.contains(name)) {
+                throw new ForbiddenException("Cannot disable system plugin: " + name);
+            }
+            ApplicationPlugin plugin = repository.findByName(name)
+                    .orElseThrow(() -> new IllegalArgumentException("Plugin not found: " + name));
+            plugin.setEnabled(false);
+            ApplicationPlugin saved = repository.save(plugin);
+            auditLogService.auditSuccess("disable", "plugin", name, Map.of("name", name));
+            return saved;
+        } catch (Exception e) {
+            auditLogService.auditFailure("disable", "plugin", name,
+                    Map.of("error", e.getMessage() != null ? e.getMessage() : "Unknown error"));
+            throw e;
         }
-        ApplicationPlugin plugin = repository.findByName(name)
-                .orElseThrow(() -> new IllegalArgumentException("Plugin not found: " + name));
-        plugin.setEnabled(false);
-        ApplicationPlugin saved = repository.save(plugin);
-        auditLogService.auditSuccess("disable", "plugin", name, Map.of("name", name));
-        return saved;
     }
 
     /**
@@ -170,13 +178,20 @@ public class PluginModuleRegistry {
      * @return the updated plugin entity
      * @throws IllegalArgumentException if the plugin is not found
      */
+    @Transactional
     public ApplicationPlugin enable(String name) {
-        ApplicationPlugin plugin = repository.findByName(name)
-                .orElseThrow(() -> new IllegalArgumentException("Plugin not found: " + name));
-        plugin.setEnabled(true);
-        ApplicationPlugin saved = repository.save(plugin);
-        auditLogService.auditSuccess("enable", "plugin", name, Map.of("name", name));
-        return saved;
+        try {
+            ApplicationPlugin plugin = repository.findByName(name)
+                    .orElseThrow(() -> new IllegalArgumentException("Plugin not found: " + name));
+            plugin.setEnabled(true);
+            ApplicationPlugin saved = repository.save(plugin);
+            auditLogService.auditSuccess("enable", "plugin", name, Map.of("name", name));
+            return saved;
+        } catch (Exception e) {
+            auditLogService.auditFailure("enable", "plugin", name,
+                    Map.of("error", e.getMessage() != null ? e.getMessage() : "Unknown error"));
+            throw e;
+        }
     }
 
     /**
@@ -187,15 +202,22 @@ public class PluginModuleRegistry {
      * @throws ForbiddenException         if the plugin is a built-in system module
      * @throws IllegalArgumentException if the plugin is not found
      */
+    @Transactional
     public void uninstall(String name) {
-        if (SYSTEM_PLUGIN_NAMES.contains(name)) {
-            throw new ForbiddenException("Cannot uninstall system plugin: " + name);
+        try {
+            if (SYSTEM_PLUGIN_NAMES.contains(name)) {
+                throw new ForbiddenException("Cannot uninstall system plugin: " + name);
+            }
+            ApplicationPlugin plugin = repository.findByName(name)
+                    .orElseThrow(() -> new IllegalArgumentException("Plugin not found: " + name));
+            plugin.setInstalled(false);
+            repository.save(plugin);
+            auditLogService.auditSuccess("uninstall", "plugin", name, Map.of("name", name));
+        } catch (Exception e) {
+            auditLogService.auditFailure("uninstall", "plugin", name,
+                    Map.of("error", e.getMessage() != null ? e.getMessage() : "Unknown error"));
+            throw e;
         }
-        ApplicationPlugin plugin = repository.findByName(name)
-                .orElseThrow(() -> new IllegalArgumentException("Plugin not found: " + name));
-        plugin.setInstalled(false);
-        repository.save(plugin);
-        auditLogService.auditSuccess("uninstall", "plugin", name, Map.of("name", name));
     }
 
     /**
@@ -206,14 +228,21 @@ public class PluginModuleRegistry {
      * @throws ForbiddenException         if the plugin is a built-in system module
      * @throws IllegalArgumentException if the plugin is not found
      */
+    @Transactional
     public void delete(String name) {
-        if (SYSTEM_PLUGIN_NAMES.contains(name)) {
-            throw new ForbiddenException("Cannot delete system plugin: " + name);
+        try {
+            if (SYSTEM_PLUGIN_NAMES.contains(name)) {
+                throw new ForbiddenException("Cannot delete system plugin: " + name);
+            }
+            ApplicationPlugin plugin = repository.findByName(name)
+                    .orElseThrow(() -> new IllegalArgumentException("Plugin not found: " + name));
+            repository.delete(plugin);
+            auditLogService.auditSuccess("delete", "plugin", name, Map.of("name", name));
+        } catch (Exception e) {
+            auditLogService.auditFailure("delete", "plugin", name,
+                    Map.of("error", e.getMessage() != null ? e.getMessage() : "Unknown error"));
+            throw e;
         }
-        ApplicationPlugin plugin = repository.findByName(name)
-                .orElseThrow(() -> new IllegalArgumentException("Plugin not found: " + name));
-        repository.delete(plugin);
-        auditLogService.auditSuccess("delete", "plugin", name, Map.of("name", name));
     }
 
     /**
@@ -252,22 +281,29 @@ public class PluginModuleRegistry {
      * @return the created plugin entity
      * @throws IllegalArgumentException if the plugin already exists
      */
+    @Transactional
     public ApplicationPlugin install(String name, String packageName, String version, String description) {
-        if (exists(name)) {
-            throw new IllegalArgumentException("Plugin already installed: " + name);
+        try {
+            if (exists(name)) {
+                throw new IllegalArgumentException("Plugin already installed: " + name);
+            }
+            ApplicationPlugin plugin = new ApplicationPlugin();
+            plugin.setName(name);
+            plugin.setPackageName(packageName != null ? packageName : name);
+            plugin.setVersion(version);
+            plugin.setDescription(description);
+            plugin.setEnabled(false);
+            plugin.setInstalled(true);
+            plugin.setBuiltIn(false);
+            ApplicationPlugin saved = repository.save(plugin);
+            auditLogService.auditSuccess("install", "plugin", name,
+                    Map.of("name", name, "packageName", saved.getPackageName(), "version", version));
+            return saved;
+        } catch (Exception e) {
+            auditLogService.auditFailure("install", "plugin", name,
+                    Map.of("error", e.getMessage() != null ? e.getMessage() : "Unknown error"));
+            throw e;
         }
-        ApplicationPlugin plugin = new ApplicationPlugin();
-        plugin.setName(name);
-        plugin.setPackageName(packageName != null ? packageName : name);
-        plugin.setVersion(version);
-        plugin.setDescription(description);
-        plugin.setEnabled(false);
-        plugin.setInstalled(true);
-        plugin.setBuiltIn(false);
-        ApplicationPlugin saved = repository.save(plugin);
-        auditLogService.auditSuccess("install", "plugin", name,
-                Map.of("name", name, "packageName", saved.getPackageName(), "version", version));
-        return saved;
     }
 
     /**

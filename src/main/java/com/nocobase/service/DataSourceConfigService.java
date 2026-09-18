@@ -9,6 +9,7 @@ import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -95,7 +96,7 @@ public class DataSourceConfigService {
                 String storedPwd = entity.getPassword();
                 if (storedPwd != null && !storedPwd.isEmpty()
                         && !passwordEncryptor.isEncrypted(storedPwd)) {
-                    // Old plaintext record — encrypt and mark for save
+                    // Old plaintext record -- encrypt and mark for save
                     entity.setPassword(passwordEncryptor.encrypt(storedPwd));
                     migratedCount++;
                     log.info("Migrated plaintext password for data source '{}'", entity.getDsKey());
@@ -126,7 +127,7 @@ public class DataSourceConfigService {
         }
     }
 
-    // ── public API ──────────────────────────────────────────────────────
+    // -- public API ------------------------------------------------------
 
     /**
      * List all external data sources (never returns passwords).
@@ -158,132 +159,153 @@ public class DataSourceConfigService {
      * Validates the key, URL/driver whitelist, persists to DB with encrypted
      * password, and registers in the in-memory map.
      */
+    @Transactional
     public Map<String, Object> create(Map<String, Object> body) {
         String dsKey = (String) body.get("key");
-        if (dsKey == null || dsKey.isBlank()) {
-            throw new IllegalArgumentException("'key' is required");
+        try {
+            if (dsKey == null || dsKey.isBlank()) {
+                throw new IllegalArgumentException("'key' is required");
+            }
+            validateKey(dsKey);
+
+            if (repository.existsByDsKey(dsKey)) {
+                throw new IllegalArgumentException("Data source '" + dsKey + "' already exists");
+            }
+            if (dataSourceProperties.getDataSource(dsKey) != null) {
+                throw new IllegalArgumentException("Data source '" + dsKey + "' already exists in configuration");
+            }
+
+            DataSourceConfigEntity entity = buildEntity(dsKey, body);
+            entity = repository.save(entity);
+
+            // Register in in-memory properties
+            if (entity.isEnabled()) {
+                dataSourceProperties.getDataSources().put(dsKey, toPropertiesConfig(entity));
+                log.info("Registered external data source '{}'", dsKey);
+            }
+
+            auditLogService.auditSuccess("create", "dataSource", dsKey,
+                    Map.of("key", dsKey, "displayName", entity.getDisplayName(),
+                            "enabled", entity.isEnabled()));
+
+            return toResponseMap(dsKey, toPropertiesConfig(entity));
+        } catch (Exception e) {
+            auditLogService.auditFailure("create", "dataSource", dsKey != null ? dsKey : "unknown",
+                    Map.of("error", e.getMessage() != null ? e.getMessage() : "Unknown error"));
+            throw e;
         }
-        validateKey(dsKey);
-
-        if (repository.existsByDsKey(dsKey)) {
-            throw new IllegalArgumentException("Data source '" + dsKey + "' already exists");
-        }
-        if (dataSourceProperties.getDataSource(dsKey) != null) {
-            throw new IllegalArgumentException("Data source '" + dsKey + "' already exists in configuration");
-        }
-
-        DataSourceConfigEntity entity = buildEntity(dsKey, body);
-        entity = repository.save(entity);
-
-        // Register in in-memory properties
-        if (entity.isEnabled()) {
-            dataSourceProperties.getDataSources().put(dsKey, toPropertiesConfig(entity));
-            log.info("Registered external data source '{}'", dsKey);
-        }
-
-        auditLogService.auditSuccess("create", "dataSource", dsKey,
-                Map.of("key", dsKey, "displayName", entity.getDisplayName(),
-                        "enabled", entity.isEnabled()));
-
-        return toResponseMap(dsKey, toPropertiesConfig(entity));
     }
 
     /**
      * Update an existing external data source.
      * Validates URL/driver whitelist on update, encrypts password before storage.
      */
+    @Transactional
     public Map<String, Object> update(Map<String, Object> body) {
         String dsKey = (String) body.get("key");
-        if (dsKey == null || dsKey.isBlank()) {
-            throw new IllegalArgumentException("'key' is required");
-        }
-
-        DataSourceConfigEntity entity = repository.findByDsKey(dsKey)
-                .orElseThrow(() -> new IllegalArgumentException("Data source '" + dsKey + "' not found"));
-
-        // Update fields from body
-        if (body.containsKey("displayName")) {
-            entity.setDisplayName((String) body.get("displayName"));
-        }
-        if (body.containsKey("url")) {
-            String url = (String) body.get("url");
-            if (url == null || url.isBlank()) {
-                throw new IllegalArgumentException("'url' is required for external data sources");
+        try {
+            if (dsKey == null || dsKey.isBlank()) {
+                throw new IllegalArgumentException("'key' is required");
             }
-            entity.setUrl(url);
-        }
-        if (body.containsKey("driverClassName")) {
-            entity.setDriverClassName((String) body.get("driverClassName"));
-        }
-        if (body.containsKey("username")) {
-            entity.setUsername((String) body.get("username"));
-        }
-        if (body.containsKey("password")) {
-            // P1-E: When password is empty/null, keep existing password
-            String rawPassword = (String) body.get("password");
-            if (rawPassword != null && !rawPassword.isBlank()) {
-                entity.setPassword(passwordEncryptor.encrypt(rawPassword));
+
+            DataSourceConfigEntity entity = repository.findByDsKey(dsKey)
+                    .orElseThrow(() -> new IllegalArgumentException("Data source '" + dsKey + "' not found"));
+
+            // Update fields from body
+            if (body.containsKey("displayName")) {
+                entity.setDisplayName((String) body.get("displayName"));
             }
-            // else: keep existing password (don't overwrite with empty)
-        }
-        if (body.containsKey("enabled")) {
-            entity.setEnabled(parseBoolean(body.get("enabled")));
-        }
-        if (body.containsKey("dialect")) {
-            String dialect = (String) body.get("dialect");
-            if (dialect != null && !dialect.isBlank()) {
-                if (!"h2".equalsIgnoreCase(dialect) && !"postgresql".equalsIgnoreCase(dialect)) {
-                    throw new IllegalArgumentException(
-                            "Dialect must be 'h2' or 'postgresql', but was '" + dialect + "'");
+            if (body.containsKey("url")) {
+                String url = (String) body.get("url");
+                if (url == null || url.isBlank()) {
+                    throw new IllegalArgumentException("'url' is required for external data sources");
                 }
+                entity.setUrl(url);
             }
-            entity.setDialect(dialect);
+            if (body.containsKey("driverClassName")) {
+                entity.setDriverClassName((String) body.get("driverClassName"));
+            }
+            if (body.containsKey("username")) {
+                entity.setUsername((String) body.get("username"));
+            }
+            if (body.containsKey("password")) {
+                // P1-E: When password is empty/null, keep existing password
+                String rawPassword = (String) body.get("password");
+                if (rawPassword != null && !rawPassword.isBlank()) {
+                    entity.setPassword(passwordEncryptor.encrypt(rawPassword));
+                }
+                // else: keep existing password (don't overwrite with empty)
+            }
+            if (body.containsKey("enabled")) {
+                entity.setEnabled(parseBoolean(body.get("enabled")));
+            }
+            if (body.containsKey("dialect")) {
+                String dialect = (String) body.get("dialect");
+                if (dialect != null && !dialect.isBlank()) {
+                    if (!"h2".equalsIgnoreCase(dialect) && !"postgresql".equalsIgnoreCase(dialect)) {
+                        throw new IllegalArgumentException(
+                                "Dialect must be 'h2' or 'postgresql', but was '" + dialect + "'");
+                    }
+                }
+                entity.setDialect(dialect);
+            }
+
+            // Validate config fields (including URL/driver whitelist)
+            validateConfigFields(entity);
+
+            entity = repository.save(entity);
+
+            // Update in-memory properties
+            if (entity.isEnabled()) {
+                dataSourceProperties.getDataSources().put(dsKey, toPropertiesConfig(entity));
+            } else {
+                dataSourceProperties.getDataSources().remove(dsKey);
+            }
+
+            // Invalidate the resolver cache so the next resolve() call picks up
+            // the updated configuration (or fails with a stable error if disabled).
+            dataSourceResolver.invalidateCache(dsKey);
+
+            log.info("Updated external data source '{}'", dsKey);
+            auditLogService.auditSuccess("update", "dataSource", dsKey,
+                    Map.of("key", dsKey, "displayName", entity.getDisplayName(),
+                            "enabled", entity.isEnabled()));
+            return toResponseMap(dsKey, toPropertiesConfig(entity));
+        } catch (Exception e) {
+            auditLogService.auditFailure("update", "dataSource", dsKey != null ? dsKey : "unknown",
+                    Map.of("error", e.getMessage() != null ? e.getMessage() : "Unknown error"));
+            throw e;
         }
-
-        // Validate config fields (including URL/driver whitelist)
-        validateConfigFields(entity);
-
-        entity = repository.save(entity);
-
-        // Update in-memory properties
-        if (entity.isEnabled()) {
-            dataSourceProperties.getDataSources().put(dsKey, toPropertiesConfig(entity));
-        } else {
-            dataSourceProperties.getDataSources().remove(dsKey);
-        }
-
-        // Invalidate the resolver cache so the next resolve() call picks up
-        // the updated configuration (or fails with a stable error if disabled).
-        dataSourceResolver.invalidateCache(dsKey);
-
-        log.info("Updated external data source '{}'", dsKey);
-        auditLogService.auditSuccess("update", "dataSource", dsKey,
-                Map.of("key", dsKey, "displayName", entity.getDisplayName(),
-                        "enabled", entity.isEnabled()));
-        return toResponseMap(dsKey, toPropertiesConfig(entity));
     }
 
     /**
      * Delete an external data source.
      */
+    @Transactional
     public void delete(String dsKey) {
-        if (dsKey == null || dsKey.isBlank()) {
-            throw new IllegalArgumentException("'key' is required");
+        try {
+            if (dsKey == null || dsKey.isBlank()) {
+                throw new IllegalArgumentException("'key' is required");
+            }
+
+            DataSourceConfigEntity entity = repository.findByDsKey(dsKey)
+                    .orElseThrow(() -> new IllegalArgumentException("Data source '" + dsKey + "' not found"));
+
+            repository.delete(entity);
+
+            // Remove from in-memory properties
+            dataSourceProperties.getDataSources().remove(dsKey);
+
+            // Invalidate the resolver cache so any cached connections are closed
+            dataSourceResolver.invalidateCache(dsKey);
+
+            log.info("Deleted external data source '{}'", dsKey);
+            auditLogService.auditSuccess("destroy", "dataSource", dsKey, Map.of("key", dsKey));
+        } catch (Exception e) {
+            auditLogService.auditFailure("destroy", "dataSource", dsKey != null ? dsKey : "unknown",
+                    Map.of("error", e.getMessage() != null ? e.getMessage() : "Unknown error"));
+            throw e;
         }
-
-        DataSourceConfigEntity entity = repository.findByDsKey(dsKey)
-                .orElseThrow(() -> new IllegalArgumentException("Data source '" + dsKey + "' not found"));
-
-        repository.delete(entity);
-
-        // Remove from in-memory properties
-        dataSourceProperties.getDataSources().remove(dsKey);
-
-        // Invalidate the resolver cache so any cached connections are closed
-        dataSourceResolver.invalidateCache(dsKey);
-
-        log.info("Deleted external data source '{}'", dsKey);
-        auditLogService.auditSuccess("destroy", "dataSource", dsKey, Map.of("key", dsKey));
     }
 
     /**
@@ -292,63 +314,77 @@ public class DataSourceConfigService {
      *
      * <p>P0-D: Applies same URL/driver/dialect validation as create/update.
      */
+    @Transactional
     public Map<String, Object> testConnection(Map<String, Object> body) {
-        String url = (String) body.get("url");
-        String driverClassName = (String) body.get("driverClassName");
-        String username = (String) body.get("username");
-        String password = (String) body.get("password");
-        String dialect = (String) body.get("dialect");
+        try {
+            String url = (String) body.get("url");
+            String driverClassName = (String) body.get("driverClassName");
+            String username = (String) body.get("username");
+            String password = (String) body.get("password");
+            String dialect = (String) body.get("dialect");
 
-        if (url == null || url.isBlank()) {
-            throw new IllegalArgumentException("'url' is required for testing connection");
-        }
-
-        // P0-D: Validate URL/driver whitelist
-        validateUrlAndDriver(url, driverClassName);
-
-        // P0-D: Validate dialect if provided
-        if (dialect != null && !dialect.isBlank()) {
-            if (!"h2".equalsIgnoreCase(dialect) && !"postgresql".equalsIgnoreCase(dialect)) {
-                throw new IllegalArgumentException(
-                        "Dialect must be 'h2' or 'postgresql', but was '" + dialect + "'");
+            if (url == null || url.isBlank()) {
+                throw new IllegalArgumentException("'url' is required for testing connection");
             }
-        }
 
-        // P0-D: Validate driver is in allowed list (no arbitrary Class.forName)
-        if (driverClassName != null && !driverClassName.isBlank()) {
-            if (!ALLOWED_DRIVERS.contains(driverClassName)) {
+            // P0-D: Validate URL/driver whitelist
+            validateUrlAndDriver(url, driverClassName);
+
+            // P0-D: Validate dialect if provided
+            if (dialect != null && !dialect.isBlank()) {
+                if (!"h2".equalsIgnoreCase(dialect) && !"postgresql".equalsIgnoreCase(dialect)) {
+                    throw new IllegalArgumentException(
+                            "Dialect must be 'h2' or 'postgresql', but was '" + dialect + "'");
+                }
+            }
+
+            // P0-D: Validate driver is in allowed list (no arbitrary Class.forName)
+            if (driverClassName != null && !driverClassName.isBlank()) {
+                if (!ALLOWED_DRIVERS.contains(driverClassName)) {
+                    return Map.of(
+                            "success", false,
+                            "message", "Driver not supported: " + driverClassName
+                    );
+                }
+                try {
+                    Class.forName(driverClassName);
+                } catch (ClassNotFoundException e) {
+                    return Map.of(
+                            "success", false,
+                            "message", "JDBC driver class not found"
+                    );
+                }
+            }
+
+            try (Connection conn = DriverManager.getConnection(url, username, password)) {
+                boolean valid = conn.isValid(5);
+                String sanitizedUrl = sanitizeUrlForResponse(url);
+                auditLogService.auditSuccess("testConnection", "dataSource", sanitizedUrl,
+                        Map.of("success", true));
+                return Map.of(
+                        "success", valid,
+                        "message", valid ? "Connection successful" : "Connection validation failed"
+                );
+            } catch (SQLException e) {
+                String sanitized = SqlErrorSanitizer.sanitizeForLog(e.getMessage());
+                String sanitizedUrl = sanitizeUrlForResponse(url != null ? url : "unknown");
+                log.warn("Connection test failed: {}", sanitized);
+                auditLogService.auditFailure("testConnection", "dataSource", sanitizedUrl,
+                        Map.of("success", false, "error", sanitized));
                 return Map.of(
                         "success", false,
-                        "message", "Driver not supported: " + driverClassName
+                        "message", "Connection failed: " + sanitized
                 );
             }
-            try {
-                Class.forName(driverClassName);
-            } catch (ClassNotFoundException e) {
-                return Map.of(
-                        "success", false,
-                        "message", "JDBC driver class not found"
-                );
-            }
-        }
-
-        try (Connection conn = DriverManager.getConnection(url, username, password)) {
-            boolean valid = conn.isValid(5);
-            return Map.of(
-                    "success", valid,
-                    "message", valid ? "Connection successful" : "Connection validation failed"
-            );
-        } catch (SQLException e) {
-            String sanitized = SqlErrorSanitizer.sanitizeForLog(e.getMessage());
-            log.warn("Connection test failed: {}", sanitized);
-            return Map.of(
-                    "success", false,
-                    "message", "Connection failed: " + sanitized
-            );
+        } catch (Exception e) {
+            String url = (String) body.get("url");
+            auditLogService.auditFailure("testConnection", "dataSource", url != null ? url : "unknown",
+                    Map.of("error", e.getMessage() != null ? e.getMessage() : "Unknown error"));
+            throw e;
         }
     }
 
-    // ── private helpers ─────────────────────────────────────────────────
+    // -- private helpers -------------------------------------------------
 
     private void validateKey(String dsKey) {
         if ("main".equals(dsKey) || "default".equals(dsKey)) {
@@ -505,7 +541,7 @@ public class DataSourceConfigService {
         return map;
     }
 
-    // ── P0-C: Exception classification helpers ──────────────────────────
+    // -- P0-C: Exception classification helpers --------------------------
 
     /**
      * P0-C: Check whether the exception is a "table not found" / "first startup
@@ -533,7 +569,7 @@ public class DataSourceConfigService {
         return isTableNotFound(ex.getCause());
     }
 
-    // ── P0-D: type-compatibility helpers ────────────────────────────────
+    // -- P0-D: type-compatibility helpers --------------------------------
 
     /**
      * Parse a boolean value from a map entry that might be a Boolean, a String,
@@ -558,7 +594,7 @@ public class DataSourceConfigService {
         return true; // default when missing or unknown type
     }
 
-    // ── P0-D: URL sanitization for error messages ───────────────────────
+    // -- P0-D: URL sanitization for error messages -----------------------
 
     /**
      * Mask credentials in a JDBC URL for safe inclusion in error messages.
@@ -571,7 +607,7 @@ public class DataSourceConfigService {
         return url.replaceAll("//([^@]*)@", "//***:***@");
     }
 
-    // ── P1-E: sanitizeUrlForResponse — masks hostname + database name ──────
+    // -- P1-E: sanitizeUrlForResponse -- masks hostname + database name ------
 
     // P1-E: Sanitize a JDBC URL for API responses, masking both embedded
     // credentials AND hostname/database name.

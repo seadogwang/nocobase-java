@@ -4,6 +4,7 @@ import com.nocobase.acl.AclFilterInjector;
 import com.nocobase.acl.AclService;
 import com.nocobase.acl.FieldPermission;
 import com.nocobase.acl.FieldPermissionFilter;
+import com.nocobase.service.AuditLogService;
 import com.nocobase.sql.SqlDataSourceResolver;
 import com.nocobase.sql.SqlIdentifier;
 import com.nocobase.sql.SqlQueryCollectionExecutor;
@@ -20,6 +21,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.jdbc.support.KeyHolder;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.sql.PreparedStatement;
 import java.util.*;
@@ -56,19 +58,22 @@ public class DynamicRepository {
     private final AclFilterInjector aclFilterInjector;
     private final SqlQueryCollectionExecutor sqlExecutor;
     private final PhysicalSqlBuilder sqlBuilder;
+    private final AuditLogService auditLogService;
 
     public DynamicRepository(JdbcTemplate jdbcTemplate,
                              CollectionRuntimeService runtimeService,
                              AclService aclService,
                              AclFilterInjector aclFilterInjector,
                              SqlQueryCollectionExecutor sqlExecutor,
-                             SqlDataSourceResolver dataSourceResolver) {
+                             SqlDataSourceResolver dataSourceResolver,
+                             AuditLogService auditLogService) {
         this.jdbcTemplate = jdbcTemplate;
         this.runtimeService = runtimeService;
         this.aclService = aclService;
         this.aclFilterInjector = aclFilterInjector;
         this.sqlExecutor = sqlExecutor;
         this.sqlBuilder = new PhysicalSqlBuilder(dataSourceResolver.resolveDialect("main"));
+        this.auditLogService = auditLogService;
     }
 
     @PostConstruct
@@ -160,43 +165,56 @@ public class DynamicRepository {
      * Create a new record. Returns the actual inserted record.
      * ACL: checks action permission, validates writable fields.
      */
+    @Transactional
     public Map<String, Object> create(String collectionName, Map<String, Object> data) {
         CollectionDefinition def = runtimeService.get(collectionName);
-        checkCapability(def, "create");
-        checkAclAction(collectionName, "create");
+        try {
+            checkCapability(def, "create");
+            checkAclAction(collectionName, "create");
 
-        Map<String, String> columnMapping = validateAndMapFields(data, def, true);
+            Map<String, String> columnMapping = validateAndMapFields(data, def, true);
 
-        // Check ACL writable fields
-        for (String fieldName : columnMapping.keySet()) {
-            aclService.checkWritableField(collectionName, "create", fieldName);
-        }
-
-        if (columnMapping.isEmpty()) {
-            throw new IllegalArgumentException("No valid fields to insert");
-        }
-
-        List<Object> params = new ArrayList<>();
-        for (Map.Entry<String, String> entry : columnMapping.entrySet()) {
-            params.add(data.get(entry.getKey()));
-        }
-
-        SqlPlan plan = sqlBuilder.buildInsertPlan(def, columnMapping, params);
-
-        KeyHolder keyHolder = new GeneratedKeyHolder();
-        jdbcTemplate.update(connection -> {
-            PreparedStatement ps = connection.prepareStatement(plan.getSql(), new String[]{def.getPrimaryKeyColumnName()});
-            for (int i = 0; i < params.size(); i++) {
-                ps.setObject(i + 1, params.get(i));
+            // Check ACL writable fields
+            for (String fieldName : columnMapping.keySet()) {
+                aclService.checkWritableField(collectionName, "create", fieldName);
             }
-            return ps;
-        }, keyHolder);
 
-        Number generatedId = keyHolder.getKey();
-        if (generatedId != null) {
-            return readAfterWrite(collectionName, generatedId.longValue(), "create");
+            if (columnMapping.isEmpty()) {
+                throw new IllegalArgumentException("No valid fields to insert");
+            }
+
+            List<Object> params = new ArrayList<>();
+            for (Map.Entry<String, String> entry : columnMapping.entrySet()) {
+                params.add(data.get(entry.getKey()));
+            }
+
+            SqlPlan plan = sqlBuilder.buildInsertPlan(def, columnMapping, params);
+
+            KeyHolder keyHolder = new GeneratedKeyHolder();
+            jdbcTemplate.update(connection -> {
+                PreparedStatement ps = connection.prepareStatement(plan.getSql(), new String[]{def.getPrimaryKeyColumnName()});
+                for (int i = 0; i < params.size(); i++) {
+                    ps.setObject(i + 1, params.get(i));
+                }
+                return ps;
+            }, keyHolder);
+
+            Number generatedId = keyHolder.getKey();
+            if (generatedId != null) {
+                Map<String, Object> result = readAfterWrite(collectionName, generatedId.longValue(), "create");
+                auditLogService.auditSuccess("create", "dynamicCrud", collectionName,
+                        Map.of("collection", collectionName, "id", generatedId.longValue(),
+                                "fieldNames", new ArrayList<>(columnMapping.keySet())));
+                return result;
+            }
+            auditLogService.auditSuccess("create", "dynamicCrud", collectionName,
+                    Map.of("collection", collectionName, "fieldNames", new ArrayList<>(columnMapping.keySet())));
+            return data;
+        } catch (Exception e) {
+            auditLogService.auditFailure("create", "dynamicCrud", collectionName,
+                    Map.of("error", e.getMessage() != null ? e.getMessage() : "Unknown error"));
+            throw e;
         }
-        return data;
     }
 
     /**
@@ -204,49 +222,60 @@ public class DynamicRepository {
      * ACL: checks action permission, validates writable fields, enforces scope.
      * Scope and id conditions are combined into a single SQL for atomicity.
      */
+    @Transactional
     public Map<String, Object> update(String collectionName, Object primaryKey, Map<String, Object> data) {
         CollectionDefinition def = runtimeService.get(collectionName);
-        checkCapability(def, "update");
-        checkAclAction(collectionName, "update");
+        try {
+            checkCapability(def, "update");
+            checkAclAction(collectionName, "update");
 
-        Map<String, String> columnMapping = validateAndMapFields(data, def, false);
+            Map<String, String> columnMapping = validateAndMapFields(data, def, false);
 
-        for (String fieldName : columnMapping.keySet()) {
-            aclService.checkWritableField(collectionName, "update", fieldName);
-        }
-
-        if (columnMapping.isEmpty()) {
-            throw new IllegalArgumentException("No valid fields to update");
-        }
-
-        // Build WHERE clause: scope + id
-        StringBuilder whereClause = new StringBuilder();
-        List<Object> whereParams = new ArrayList<>();
-
-        Map<String, Object> scopeFilter = aclFilterInjector.mergeScopeFilter(collectionName, "update", null);
-        if (scopeFilter != null && !scopeFilter.isEmpty()) {
-            CompiledFilter scopeCompiled = FilterCompiler.compile(scopeFilter, def);
-            if (!scopeCompiled.isEmpty()) {
-                whereClause.append("(").append(scopeCompiled.getWhereClause()).append(") AND ");
-                whereParams.addAll(scopeCompiled.getParameters());
+            for (String fieldName : columnMapping.keySet()) {
+                aclService.checkWritableField(collectionName, "update", fieldName);
             }
+
+            if (columnMapping.isEmpty()) {
+                throw new IllegalArgumentException("No valid fields to update");
+            }
+
+            // Build WHERE clause: scope + id
+            StringBuilder whereClause = new StringBuilder();
+            List<Object> whereParams = new ArrayList<>();
+
+            Map<String, Object> scopeFilter = aclFilterInjector.mergeScopeFilter(collectionName, "update", null);
+            if (scopeFilter != null && !scopeFilter.isEmpty()) {
+                CompiledFilter scopeCompiled = FilterCompiler.compile(scopeFilter, def);
+                if (!scopeCompiled.isEmpty()) {
+                    whereClause.append("(").append(scopeCompiled.getWhereClause()).append(") AND ");
+                    whereParams.addAll(scopeCompiled.getParameters());
+                }
+            }
+            whereClause.append(pk(def)).append(" = ?");
+            whereParams.add(primaryKey);
+
+            List<Object> setParams = new ArrayList<>();
+            for (Map.Entry<String, String> entry : columnMapping.entrySet()) {
+                setParams.add(data.get(entry.getKey()));
+            }
+
+            SqlPlan plan = sqlBuilder.buildUpdatePlan(def, columnMapping, setParams, whereClause.toString(), whereParams);
+            int affected = jdbcTemplate.update(plan.getSql(), plan.getParametersArray());
+
+            if (affected == 0) {
+                throw new ForbiddenException("Record not found or not in scope");
+            }
+
+            Map<String, Object> result = readAfterWrite(collectionName, primaryKey, "update");
+            auditLogService.auditSuccess("update", "dynamicCrud", collectionName + "/" + primaryKey,
+                    Map.of("collection", collectionName, "id", primaryKey,
+                            "fieldNames", new ArrayList<>(columnMapping.keySet())));
+            return result;
+        } catch (Exception e) {
+            auditLogService.auditFailure("update", "dynamicCrud", collectionName + "/" + primaryKey,
+                    Map.of("error", e.getMessage() != null ? e.getMessage() : "Unknown error"));
+            throw e;
         }
-        whereClause.append(pk(def)).append(" = ?");
-        whereParams.add(primaryKey);
-
-        List<Object> setParams = new ArrayList<>();
-        for (Map.Entry<String, String> entry : columnMapping.entrySet()) {
-            setParams.add(data.get(entry.getKey()));
-        }
-
-        SqlPlan plan = sqlBuilder.buildUpdatePlan(def, columnMapping, setParams, whereClause.toString(), whereParams);
-        int affected = jdbcTemplate.update(plan.getSql(), plan.getParametersArray());
-
-        if (affected == 0) {
-            throw new ForbiddenException("Record not found or not in scope");
-        }
-
-        return readAfterWrite(collectionName, primaryKey, "update");
     }
 
     /**
@@ -254,43 +283,53 @@ public class DynamicRepository {
      * ACL: checks action permission, enforces scope.
      * Scope and id conditions are combined into a single SQL for atomicity.
      */
+    @Transactional
     public void destroy(String collectionName, Object primaryKey) {
         CollectionDefinition def = runtimeService.get(collectionName);
-        checkCapability(def, "destroy");
-        checkAclAction(collectionName, "destroy");
+        try {
+            checkCapability(def, "destroy");
+            checkAclAction(collectionName, "destroy");
 
-        // Build WHERE clause: scope + id
-        StringBuilder whereClause = new StringBuilder();
-        List<Object> whereParams = new ArrayList<>();
+            // Build WHERE clause: scope + id
+            StringBuilder whereClause = new StringBuilder();
+            List<Object> whereParams = new ArrayList<>();
 
-        Map<String, Object> scopeFilter = aclFilterInjector.mergeScopeFilter(collectionName, "destroy", null);
-        if (scopeFilter != null && !scopeFilter.isEmpty()) {
-            CompiledFilter scopeCompiled = FilterCompiler.compile(scopeFilter, def);
-            if (!scopeCompiled.isEmpty()) {
-                whereClause.append("(").append(scopeCompiled.getWhereClause()).append(") AND ");
-                whereParams.addAll(scopeCompiled.getParameters());
+            Map<String, Object> scopeFilter = aclFilterInjector.mergeScopeFilter(collectionName, "destroy", null);
+            if (scopeFilter != null && !scopeFilter.isEmpty()) {
+                CompiledFilter scopeCompiled = FilterCompiler.compile(scopeFilter, def);
+                if (!scopeCompiled.isEmpty()) {
+                    whereClause.append("(").append(scopeCompiled.getWhereClause()).append(") AND ");
+                    whereParams.addAll(scopeCompiled.getParameters());
+                }
             }
-        }
-        whereClause.append(pk(def)).append(" = ?");
-        whereParams.add(primaryKey);
+            whereClause.append(pk(def)).append(" = ?");
+            whereParams.add(primaryKey);
 
-        SqlPlan plan = sqlBuilder.buildDeletePlan(def, whereClause.toString(), whereParams);
-        int affected = jdbcTemplate.update(plan.getSql(), plan.getParametersArray());
+            SqlPlan plan = sqlBuilder.buildDeletePlan(def, whereClause.toString(), whereParams);
+            int affected = jdbcTemplate.update(plan.getSql(), plan.getParametersArray());
 
-        if (affected == 0) {
-            throw new ForbiddenException("Record not found or not in scope");
+            if (affected == 0) {
+                throw new ForbiddenException("Record not found or not in scope");
+            }
+
+            auditLogService.auditSuccess("destroy", "dynamicCrud", collectionName + "/" + primaryKey,
+                    Map.of("collection", collectionName, "id", primaryKey));
+        } catch (Exception e) {
+            auditLogService.auditFailure("destroy", "dynamicCrud", collectionName + "/" + primaryKey,
+                    Map.of("error", e.getMessage() != null ? e.getMessage() : "Unknown error"));
+            throw e;
         }
     }
 
     // ========================================================================
-    // Internal API — for relation/association layer, NOT for public controllers
+    // Internal API -- for relation/association layer, NOT for public controllers
     // These methods do NOT check public CRUD action permissions.
     // They use action-specific scope and field checks.
     // ========================================================================
 
     /**
      * Check if a record exists within the scope of a given action.
-     * Does NOT check the action permission itself — only scope.
+     * Does NOT check the action permission itself -- only scope.
      * Used by association services to verify source/target records are accessible.
      */
     public boolean existsInScope(String collectionName, String action, Object primaryKey) {
@@ -525,7 +564,7 @@ public class DynamicRepository {
     }
 
     // ========================================================================
-    // Through table internal operations — for belongsToMany association
+    // Through table internal operations -- for belongsToMany association
     // These bypass frontend resource permissions on the through table.
     // Source and target collection permissions must be checked by the caller.
     // ========================================================================
@@ -582,7 +621,7 @@ public class DynamicRepository {
 
     /**
      * Create a link in a through table.
-     * Uses direct SQL — does NOT check through table action permissions.
+     * Uses direct SQL -- does NOT check through table action permissions.
      * Caller must verify source and target collection permissions.
      */
     public Map<String, Object> createLink(String throughCollection, String sourceKey, Object sourceId,
@@ -616,7 +655,7 @@ public class DynamicRepository {
 
     /**
      * Delete a link from a through table.
-     * Uses direct SQL — does NOT check through table action permissions.
+     * Uses direct SQL -- does NOT check through table action permissions.
      * Caller must verify source and target collection permissions.
      */
     public void deleteLink(String throughCollection, String sourceKey, Object sourceId,
@@ -631,7 +670,7 @@ public class DynamicRepository {
 
     /**
      * Replace all links in a through table.
-     * Uses direct SQL — does NOT check through table action permissions.
+     * Uses direct SQL -- does NOT check through table action permissions.
      * Caller must verify source and target collection permissions.
      */
     public void replaceLinks(String throughCollection, String sourceKey, Object sourceId,
