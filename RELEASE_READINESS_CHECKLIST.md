@@ -93,14 +93,38 @@ All items are mandatory unless explicitly marked as conditional.
 ## 9. PostgreSQL Acceptance
 
 - [ ] **MANDATORY** -- All PostgreSQL acceptance tests pass against a real PostgreSQL instance.
-      Run with: `mvn test -Ppostgresql-acceptance`
-      Set env vars: `PG_URL`, `PG_USERNAME`, `PG_PASSWORD`.
-      The `postgresql-acceptance` Maven profile sets the `postgresql.acceptance=true` system property
-      and overrides the surefire configuration to include `PostgreSqlIntegrationTest`.
-      The test class `@BeforeAll` checks for `postgresql.acceptance=true`:
-      if the profile is active but env vars are missing, the build **FAILS** (not skips).
-      If the profile is not active, the tests are excluded by the default surefire config.
-      This is NOT optional -- a release cannot proceed if PG acceptance tests fail or are skipped.
+
+      **Default mode (Testcontainers/Docker):**
+      ```bash
+      mvn test -Ppostgresql-acceptance
+      ```
+      This auto-starts a PostgreSQL container via Testcontainers. No environment variables
+      are required. Docker must be available.
+
+      **External PostgreSQL mode:**
+      ```bash
+      PG_URL=jdbc:postgresql://localhost:5432/testdb \
+      PG_USERNAME=postgres \
+      PG_PASSWORD=postgres \
+      mvn test -Ppostgresql-acceptance -Dpostgresql.external.pg=true
+      ```
+      Use this mode when Docker is not available or you have a dedicated PostgreSQL
+      instance. All three env vars are required; a partial configuration will fail
+      before tests run with a clear error message (no credential leak).
+
+      **Via release gate script:**
+      ```powershell
+      # Default (Testcontainers):
+      .\scripts\release-gate.ps1
+
+      # External PostgreSQL:
+      .\scripts\release-gate.ps1 -RequireExternalPg
+      ```
+
+      When running via the release gate script, Gate 3 uses Testcontainers by default.
+      Use `-RequireExternalPg` to switch to external PostgreSQL mode. The script
+      passes `-Dpostgresql.external.pg=true` to Maven automatically. This is NOT
+      optional -- a release cannot proceed if PG acceptance tests fail or are skipped.
 - [ ] PostgreSQL-specific SQL features (schemas, sequences, quoting) work correctly.
 - [ ] Flyway migrations have been verified against a fresh PostgreSQL database.
 - [ ] Connection timeout and retry behavior is tested under PostgreSQL.
@@ -135,15 +159,12 @@ This script runs all four mandatory gates, parses surefire XML reports, performs
 a sensitive code scan, and generates `RELEASE_GATE_RESULT.md` with structured
 results. The script exits with code 0 if all gates pass, or code 1 if any gate fails.
 
-**Prerequisites for the PG gate:**
-```powershell
-$env:PG_URL="jdbc:postgresql://localhost:5432/nocobase_test"
-$env:PG_USERNAME="nocobase"
-$env:PG_PASSWORD="<password>"
-```
-
-If `PG_URL`, `PG_USERNAME`, or `PG_PASSWORD` are not set, the PG acceptance gate
-will FAIL with a non-zero exit (not skip). This is by design -- the PG gate is mandatory.
+**Prerequisites:**
+      - **Default mode:** Docker (Testcontainers auto-starts PostgreSQL).
+        No environment variables required.
+      - **External PG mode:** Set `PG_URL`, `PG_USERNAME`, `PG_PASSWORD`.
+        Use `-RequireExternalPg` with the release gate script.
+        Partial configuration fails before tests run (no credential leak).
 
 **Options:**
 - `-SkipPgAcceptance`: Skip the PG acceptance gate (not recommended for release).

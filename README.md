@@ -33,12 +33,20 @@ Default server port: `13000`.
 
 The default development database is H2 in PostgreSQL compatibility mode. PostgreSQL acceptance tests are excluded from the default test run and must be executed explicitly:
 
+**Default mode (Testcontainers/Docker):**
+```bash
+mvn test -Ppostgresql-acceptance
+```
+No environment variables required. Docker must be available. Testcontainers auto-starts a PostgreSQL container.
+
+**External PostgreSQL mode:**
 ```bash
 PG_URL=jdbc:postgresql://localhost:5432/nocobase_test \
 PG_USERNAME=postgres \
 PG_PASSWORD=postgres \
-mvn test -Ppostgresql-acceptance
+mvn test -Ppostgresql-acceptance -Dpostgresql.external.pg=true
 ```
+Use when Docker is unavailable or a dedicated PostgreSQL instance is preferred. All three env vars are required.
 
 ## Production Notes
 
