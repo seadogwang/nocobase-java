@@ -51,7 +51,7 @@
     "method": "GET",
     "path": "/api/applicationPlugins:listEnabled",
     "requiresAuth": false,
-    "expectedStatus": 403,
+    "expectedStatus": 401,
     "expectedShape": {
       "errors[0].message": "string"
     }
@@ -61,7 +61,7 @@
     "method": "GET",
     "path": "/api/applicationPlugins/listEnabled",
     "requiresAuth": false,
-    "expectedStatus": 403,
+    "expectedStatus": 401,
     "expectedShape": {
       "errors[0].message": "string"
     }

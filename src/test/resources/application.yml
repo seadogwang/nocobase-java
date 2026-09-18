@@ -35,3 +35,16 @@ logging:
   level:
     root: WARN
     com.nocobase: DEBUG
+
+NOCOBASE_ADMIN_EMAIL: admin@nocobase.com
+NOCOBASE_ADMIN_PASSWORD: Admin123!
+NOCOBASE_ADMIN_NICKNAME: Super Admin
+
+server:
+  error:
+    whitelabel:
+      enabled: false
+    include-message: never
+    include-stacktrace: never
+    include-binding-errors: never
+    include-exception: false

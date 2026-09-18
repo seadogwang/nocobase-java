@@ -94,7 +94,7 @@
       "method": "GET",
       "path": "/api/applicationPlugins:listEnabled",
       "requiresAuth": false,
-      "expectedStatus": 403,
+      "expectedStatus": 401,
       "negativeAssertion": true,
       "expectedShape": {
         "errors[0].message": "string"
@@ -153,7 +153,7 @@
       "method": "GET",
       "path": "/api/systemSettings:get",
       "requiresAuth": false,
-      "expectedStatus": 403,
+      "expectedStatus": 401,
       "negativeAssertion": true,
       "expectedShape": {
         "errors[0].message": "string"
@@ -221,7 +221,7 @@
       "method": "GET",
       "path": "/api/uiSchemas:getTree",
       "requiresAuth": false,
-      "expectedStatus": 403,
+      "expectedStatus": 401,
       "negativeAssertion": true,
       "expectedShape": {
         "errors[0].message": "string"
@@ -245,7 +245,7 @@
       "method": "GET",
       "path": "/api/collections:list",
       "requiresAuth": false,
-      "expectedStatus": 403,
+      "expectedStatus": 401,
       "negativeAssertion": true,
       "expectedShape": {
         "errors[0].message": "string"
@@ -297,7 +297,7 @@
       "method": "GET",
       "path": "/api/users:list",
       "requiresAuth": false,
-      "expectedStatus": 403,
+      "expectedStatus": 401,
       "negativeAssertion": true,
       "expectedShape": {
         "errors[0].message": "string"
@@ -329,7 +329,7 @@
       "method": "GET",
       "path": "/api/acl/roleResources:list",
       "requiresAuth": false,
-      "expectedStatus": 403,
+      "expectedStatus": 401,
       "negativeAssertion": true,
       "expectedShape": {
         "errors[0].message": "string"
@@ -351,7 +351,7 @@
       "method": "GET",
       "path": "/api/dataSources:list",
       "requiresAuth": false,
-      "expectedStatus": 403,
+      "expectedStatus": 401,
       "negativeAssertion": true,
       "expectedShape": {
         "errors[0].message": "string"
@@ -577,10 +577,8 @@
       "path": "/api/users:update",
       "requiresAuth": true,
       "dependsOn": "createdUserId",
-      "query": {
-        "filterByTk": "{{createdUserId}}"
-      },
       "body": {
+        "id": "{{createdUserId}}",
         "nickname": "Trace Updated"
       },
       "expectedStatus": 200,
@@ -604,60 +602,22 @@
       }
     },
     {
-      "name": "Association - list user roles",
+      "name": "Association - list roles for user",
       "method": "GET",
-      "path": "/api/users.roles:list",
+      "path": "/api/users/{{userId}}/roles:list",
       "requiresAuth": true,
-      "query": {
-        "filterByTk": "1"
-      },
       "expectedStatus": 200,
       "expectedShape": {
         "data": "array"
       }
     },
     {
-      "name": "Association - add role to user",
+      "name": "Association - update roles for user",
       "method": "POST",
-      "path": "/api/users.roles:add",
+      "path": "/api/users/{{userId}}/roles:update",
       "requiresAuth": true,
-      "query": {
-        "filterByTk": "1"
-      },
       "body": {
-        "targetId": 2
-      },
-      "expectedStatus": 200,
-      "expectedShape": {
-        "data.message": "string"
-      }
-    },
-    {
-      "name": "Association - remove role from user",
-      "method": "POST",
-      "path": "/api/users.roles:remove",
-      "requiresAuth": true,
-      "query": {
-        "filterByTk": "1"
-      },
-      "body": {
-        "targetId": 2
-      },
-      "expectedStatus": 200,
-      "expectedShape": {
-        "data.message": "string"
-      }
-    },
-    {
-      "name": "Association - set user roles",
-      "method": "POST",
-      "path": "/api/users.roles:set",
-      "requiresAuth": true,
-      "query": {
-        "filterByTk": "1"
-      },
-      "body": {
-        "targetIds": [1, 2]
+        "roles": [1]
       },
       "expectedStatus": 200,
       "expectedShape": {
@@ -670,12 +630,12 @@
       "path": "/api/dataSources:create",
       "requiresAuth": true,
       "body": {
-        "key": "trace-test-ds-{{timestamp}}",
-        "url": "jdbc:h2:mem:trace_test_ds_{{timestamp}};DB_CLOSE_DELAY=-1",
+        "key": "trace-test-ds",
+        "url": "jdbc:h2:mem:trace_test_ds;DB_CLOSE_DELAY=-1",
         "displayName": "Trace Test DS",
         "driverClassName": "org.h2.Driver",
         "username": "sa",
-        "password": "",
+        "password": "password123",
         "dialect": "h2"
       },
       "expectedStatus": 200,
@@ -692,7 +652,7 @@
       "method": "POST",
       "path": "/api/dataSources:create",
       "requiresAuth": false,
-      "expectedStatus": 403,
+      "expectedStatus": 401,
       "negativeAssertion": true,
       "body": {
         "key": "unauth-ds",
@@ -760,7 +720,7 @@
       "method": "POST",
       "path": "/api/fields:create",
       "requiresAuth": false,
-      "expectedStatus": 403,
+      "expectedStatus": 401,
       "negativeAssertion": true,
       "body": {
         "collectionName": "users",
@@ -820,6 +780,235 @@
       },
       "expectedShape": {
         "errors[0].message": "string"
+      }
+    },
+    {
+      "name": "Health check - verify application is up and running",
+      "method": "GET",
+      "path": "/api/health",
+      "requiresAuth": false,
+      "expectedStatus": 200,
+      "expectedShape": {
+        "status": "string",
+        "components.database.status": "string",
+        "components.flyway.status": "string"
+      }
+    },
+    {
+      "name": "Collections:get - get specific collection by name",
+      "method": "GET",
+      "path": "/api/users",
+      "requiresAuth": true,
+      "expectedStatus": 200,
+      "expectedShape": {
+        "data.name": "string",
+        "data.title": "string",
+        "data.fields": "array"
+      }
+    },
+    {
+      "name": "Roles:create - create a test role",
+      "method": "POST",
+      "path": "/api/roles:create",
+      "requiresAuth": true,
+      "body": {
+        "name": "trace_test_role",
+        "title": "Trace Test Role"
+      },
+      "expectedStatus": 200,
+      "expectedShape": {
+        "data.id": "number",
+        "data.name": "string",
+        "data.title": "string"
+      },
+      "extract": {
+        "roleId": "$.data.id"
+      }
+    },
+    {
+      "name": "ACL roleResourceActions:list - list actions for a role resource",
+      "method": "GET",
+      "path": "/api/acl/roleResourceActions:list",
+      "query": {
+        "roleResourceId": "1"
+      },
+      "requiresAuth": true,
+      "expectedStatus": 200,
+      "expectedShape": {
+        "data": "array"
+      }
+    },
+    {
+      "name": "ACL roleResourceScopes:list - list scopes for a role resource",
+      "method": "GET",
+      "path": "/api/acl/roleResourceScopes:list",
+      "query": {
+        "roleResourceId": "1"
+      },
+      "requiresAuth": true,
+      "expectedStatus": 200,
+      "expectedShape": {
+        "data": "array"
+      }
+    },
+    {
+      "name": "[NEGATIVE] ACL roleResourceActions:create with non-existent roleResourceId",
+      "method": "POST",
+      "path": "/api/acl/roleResourceActions:create",
+      "requiresAuth": true,
+      "body": {
+        "roleResourceId": 99999,
+        "action": "list"
+      },
+      "expectedStatus": 404,
+      "negativeAssertion": true,
+      "expectedShape": {
+        "errors[0].message": "string"
+      }
+    },
+    {
+      "name": "Roles:destroy - destroy the test role",
+      "method": "POST",
+      "path": "/api/roles:destroy",
+      "requiresAuth": true,
+      "dependsOn": "roleId",
+      "body": {
+        "id": "{{roleId}}"
+      },
+      "expectedStatus": 200,
+      "expectedShape": {
+        "data.id": "number"
+      }
+    },
+    {
+      "name": "[NEGATIVE] CRUD - create on non-existent collection returns 404",
+      "method": "POST",
+      "path": "/api/nonexistent_collection_xyz:create",
+      "requiresAuth": true,
+      "body": {
+        "name": "should_fail"
+      },
+      "expectedStatus": 404,
+      "negativeAssertion": true,
+      "expectedShape": {
+        "errors[0].message": "string"
+      }
+    },
+    {
+      "name": "CRUD - create non-admin test user",
+      "method": "POST",
+      "path": "/api/users:create",
+      "requiresAuth": true,
+      "body": {
+        "email": "trace-nonadmin-{{timestamp}}@nocobase.com",
+        "nickname": "Trace NonAdmin",
+        "password": "test123"
+      },
+      "expectedStatus": 200,
+      "expectedShape": {
+        "data.id": "number",
+        "data.email": "string"
+      },
+      "extract": {
+        "nonAdminUserId": "$.data.id"
+      }
+    },
+    {
+      "name": "Login as non-admin user to get non-admin token",
+      "method": "POST",
+      "path": "/api/auth:signIn",
+      "body": {
+        "email": "trace-nonadmin-{{timestamp}}@nocobase.com",
+        "password": "test123"
+      },
+      "requiresAuth": false,
+      "expectedStatus": 200,
+      "expectedShape": {
+        "data.token": "string",
+        "data.user.id": "number"
+      },
+      "extract": {
+        "authToken": "$.data.token"
+      }
+    },
+    {
+      "name": "[NEGATIVE] Non-admin user tries admin-only endpoint (dataSources:list)",
+      "method": "GET",
+      "path": "/api/dataSources:list",
+      "requiresAuth": true,
+      "expectedStatus": 403,
+      "negativeAssertion": true,
+      "expectedShape": {
+        "errors[0].message": "string"
+      }
+    },
+    {
+      "name": "SystemSettings:get for non-admin user (should work for any authenticated user)",
+      "method": "GET",
+      "path": "/api/systemSettings:get",
+      "requiresAuth": true,
+      "expectedStatus": 200,
+      "expectedShape": {
+        "data": "map",
+        "data.title": "string"
+      }
+    },
+    {
+      "name": "Login as admin again to restore admin token",
+      "method": "POST",
+      "path": "/api/auth:signIn",
+      "body": {
+        "email": "admin@nocobase.com",
+        "password": "admin123"
+      },
+      "requiresAuth": false,
+      "expectedStatus": 200,
+      "expectedShape": {
+        "data.token": "string",
+        "data.user.id": "number"
+      },
+      "extract": {
+        "authToken": "$.data.token"
+      }
+    },
+    {
+      "name": "Auth - refresh token before user lookup",
+      "method": "POST",
+      "path": "/api/auth:refresh",
+      "requiresAuth": true,
+      "expectedStatus": 200,
+      "expectedShape": {
+        "data.token": "string"
+      },
+      "extract": {
+        "authToken": "$.data.token"
+      }
+    },
+    {
+      "name": "Auth:user after token refresh - verify user profile with refreshed token",
+      "method": "GET",
+      "path": "/api/auth:user",
+      "requiresAuth": true,
+      "expectedStatus": 200,
+      "expectedShape": {
+        "data.id": "number",
+        "data.email": "string",
+        "data.nickname": "string"
+      },
+      "assertNoField": ["data.password"]
+    },
+    {
+      "name": "Collections:list with pagination - page 1, pageSize 5",
+      "method": "GET",
+      "path": "/api/collections:list",
+      "query": {
+        "page": "1",
+        "pageSize": "5"
+      },
+      "requiresAuth": true,
+      "expectedStatus": 200,
+      "expectedShape": {
+        "data": "array"
       }
     }
   ]

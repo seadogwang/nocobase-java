@@ -52,7 +52,7 @@
     "method": "GET",
     "path": "/api/systemSettings:get",
     "requiresAuth": false,
-    "expectedStatus": 403,
+    "expectedStatus": 401,
     "expectedShape": {
       "errors[0].message": "string"
     }
@@ -62,7 +62,7 @@
     "method": "GET",
     "path": "/api/systemSettings/get",
     "requiresAuth": false,
-    "expectedStatus": 403,
+    "expectedStatus": 401,
     "expectedShape": {
       "errors[0].message": "string"
     }

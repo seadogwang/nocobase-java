@@ -1720,10 +1720,10 @@ class P1FixApiTest {
 
     @Test
     @Order(56)
-    @DisplayName("P1-E-DS-18: Data source without auth gets 403 on list")
+    @DisplayName("P1-E-DS-18: Data source without auth gets 401 on list")
     void testDataSourcesListWithoutAuthForbidden() throws Exception {
         mockMvc.perform(get("/api/dataSources:list"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
     }
 
     // ========================================================================
@@ -1787,12 +1787,12 @@ class P1FixApiTest {
 
     @Test
     @Order(61)
-    @DisplayName("P1-F-5: collections:dryRun rejected without auth (403)")
+    @DisplayName("P1-F-5: collections:dryRun rejected without auth (401)")
     void testCollectionsDryRunWithoutAuth() throws Exception {
         mockMvc.perform(post("/api/collections:dryRun")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"name\":\"test_dryrun_nonauth\",\"title\":\"Test\",\"type\":\"physical\"}"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
     }
 
     @Test
@@ -1831,12 +1831,12 @@ class P1FixApiTest {
 
     @Test
     @Order(63)
-    @DisplayName("P1-F-7: fields:destroy rejected without auth (403)")
+    @DisplayName("P1-F-7: fields:destroy rejected without auth (401)")
     void testFieldsDestroyWithoutAuth() throws Exception {
         mockMvc.perform(post("/api/fields:destroy")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"collectionName\":\"test\",\"name\":\"x\"}"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
     }
 
     @Test
