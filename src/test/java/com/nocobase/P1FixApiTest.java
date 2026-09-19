@@ -13,6 +13,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
@@ -172,6 +173,31 @@ class P1FixApiTest {
     private void authAsAdmin() {
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken(1L, null, List.of()));
+    }
+
+    private static final BCryptPasswordEncoder ADMIN_ENCODER = new BCryptPasswordEncoder();
+
+    @AfterEach
+    void restoreAdminUser() {
+        // P1FixApiTest mutates the shared admin user (e.g. @Order(4) sets
+        // nickname "Updated Admin"). Restore canonical admin@nocobase.com /
+        // "Admin" / admin123 so later test classes sharing this in-mem db
+        // (ApiCompatibilityTest.signInSuccess, SqlCollectionErrorTest.setUp)
+        // start from a clean admin instead of seeing leftover mutations.
+        userRepository.findByEmail("admin@nocobase.com").ifPresent(u -> {
+            boolean dirty = false;
+            if (!"Admin".equals(u.getNickname())) {
+                u.setNickname("Admin");
+                dirty = true;
+            }
+            if (!ADMIN_ENCODER.matches("admin123", u.getPassword())) {
+                u.setPassword(ADMIN_ENCODER.encode("admin123"));
+                dirty = true;
+            }
+            if (dirty) {
+                userRepository.save(u);
+            }
+        });
     }
 
     // ========================================================================

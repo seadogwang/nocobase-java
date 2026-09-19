@@ -45,7 +45,12 @@ public class TestDataInitializer {
             Role rootRole = ensureRole(roleRepository, "root", "Root", false);
             Role memberRole = ensureRole(roleRepository, "member", "Member", true);
 
-            // 2. Admin user — idempotent
+            // 2. Admin user — idempotent, and RESTORE canonical credentials
+            //    if the in-mem db persisted across a @DirtiesContext context
+            //    recreation (DB_CLOSE_DELAY=-1). A prior test may have run
+            //    bootstrap (Admin123! password) or users:update (changed
+            //    nickname); re-seed restores admin@nocobase.com / admin123 /
+            //    "Admin" so every test class starts from the same admin.
             User adminUser = userRepository.findByEmail("admin@nocobase.com").orElse(null);
             if (adminUser == null) {
                 adminUser = new User();
@@ -55,7 +60,19 @@ public class TestDataInitializer {
                 adminUser = userRepository.save(adminUser);
                 log.info("Created test admin user (admin@nocobase.com)");
             } else {
-                log.info("Test admin user already exists (id={})", adminUser.getId());
+                boolean dirty = false;
+                if (!"Admin".equals(adminUser.getNickname())) {
+                    adminUser.setNickname("Admin");
+                    dirty = true;
+                }
+                if (!encoder.matches("admin123", adminUser.getPassword())) {
+                    adminUser.setPassword(encoder.encode("admin123"));
+                    dirty = true;
+                }
+                if (dirty) {
+                    adminUser = userRepository.save(adminUser);
+                    log.info("Restored test admin user credentials (admin@nocobase.com)");
+                }
             }
 
             // 3. Bind admin user to admin role — idempotent
