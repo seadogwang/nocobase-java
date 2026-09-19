@@ -20,6 +20,10 @@
     <properties>
         <java.version>17</java.version>
         <jjwt.version>0.12.5</jjwt.version>
+        <!-- Flyway validation target DB. Defaults to in-memory H2 so
+             `mvn flyway:validate` works on a clean CI checkout (no local
+             file DB). Override locally with -Dflyway.url=jdbc:h2:file:./storage/db/nocobase;... -->
+        <flyway.url>jdbc:h2:mem:nocobase-validate;MODE=PostgreSQL;DB_CLOSE_DELAY=-1</flyway.url>
     </properties>
 
     <dependencies>
@@ -127,7 +131,7 @@
                 <groupId>org.flywaydb</groupId>
                 <artifactId>flyway-maven-plugin</artifactId>
                 <configuration>
-                    <url>jdbc:h2:file:./storage/db/nocobase;AUTO_SERVER=TRUE;MODE=PostgreSQL</url>
+                    <url>${flyway.url}</url>
                     <user>sa</user>
                     <password></password>
                     <locations>

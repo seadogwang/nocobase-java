@@ -349,18 +349,18 @@ else {
     if ($gate1Cmd.ExitCode -ne 0) { Write-Host "    REASON: Maven exit code $($gate1Cmd.ExitCode)" -ForegroundColor Red }
 }
 
-# -- Gate 2: mvn flyway:validate ------------------------------------------------
+# -- Gate 2: mvn flyway:migrate ------------------------------------------------
 
 Write-Host ""
 Write-Host "==========================================" -ForegroundColor Cyan
-Write-Host "  GATE 2: mvn flyway:validate" -ForegroundColor Cyan
+Write-Host "  GATE 2: mvn flyway:migrate" -ForegroundColor Cyan
 Write-Host "==========================================" -ForegroundColor Cyan
 
 if ($SkipFlyway) {
     Write-Host "  SKIPPED by user request." -ForegroundColor Yellow
     $gate2Cmd = [PSCustomObject]@{
-        Command     = "mvn flyway:validate"
-        Description = "Flyway Migration Validation"
+        Command     = "mvn flyway:migrate"
+        Description = "Flyway Migration Apply"
         ExitCode    = -1
         Duration    = 0
         Output      = "SKIPPED"
@@ -368,7 +368,7 @@ if ($SkipFlyway) {
     $gate2Passed = $false
 }
 else {
-    $gate2Cmd = Invoke-MavenCommand -MavenArgs @("flyway:validate") -Description "Flyway Migration Validation"
+    $gate2Cmd = Invoke-MavenCommand -MavenArgs @("flyway:migrate") -Description "Flyway Migration Apply"
     $gate2Passed = $gate2Cmd.ExitCode -eq 0
 }
 
@@ -465,8 +465,13 @@ else {
         Write-Host "  Running with Testcontainers (auto-start PostgreSQL container)" -ForegroundColor Green
     }
 
-    # Clean surefire reports before running PG tests to avoid pollution from Gate 1
-    Clear-SurefireReports -ReportsDir $ReportsDir
+    # Archive Gate 1 surefire reports (preserve failure details for the
+    # uploaded artifact) instead of deleting them. The PG verifier finds the
+    # PG report by file name, so Gate 1 reports do not pollute it.
+    $gate1Archive = Join-Path $ReportsDir "gate1"
+    if (-not (Test-Path $gate1Archive)) { New-Item -ItemType Directory -Path $gate1Archive -Force | Out-Null }
+    Get-ChildItem -Path $ReportsDir -Filter "TEST-*.xml" -File -ErrorAction SilentlyContinue |
+        Move-Item -Destination $gate1Archive -Force -ErrorAction SilentlyContinue
 
     if ($RequireExternalPg) {
         $gate3Cmd = Invoke-MavenCommand -MavenArgs @("test", "-Ppostgresql-acceptance", "-Dpostgresql.external.pg=true") -Description "PostgreSQL Acceptance Tests (external PG)"
@@ -635,7 +640,7 @@ else {
     Write-Host "  OVERALL: ONE OR MORE GATES FAILED" -ForegroundColor Red
     $failedGates = @()
     if (-not $gate1Passed) { $failedGates += "Gate 1 (mvn test)" }
-    if (-not $gate2Passed) { $failedGates += "Gate 2 (flyway:validate)" }
+    if (-not $gate2Passed) { $failedGates += "Gate 2 (flyway:migrate)" }
     if (-not $gate3Passed) { $failedGates += "Gate 3 (postgresql-acceptance)" }
     if (-not $gate4.Passed) { $failedGates += "Gate 4 (sensitive scan)" }
     Write-Host "  Failed: $($failedGates -join '; ')" -ForegroundColor Red
@@ -696,7 +701,7 @@ $reportContent = @"
 | Gate | Command | Exit Code | Duration | Tests | Failures | Errors | Skipped | Verifier | Result |
 |------|---------|-----------|----------|-------|----------|--------|---------|----------|--------|
 | 1 | `mvn test` | $($gate1Cmd.ExitCode) | $($gate1Cmd.Duration)s | $gate1Tests | $gate1Failures | $gate1Errors | $gate1Skipped | -- | $(if ($gate1Passed) { "PASS" } else { "FAIL" }) |
-| 2 | `mvn flyway:validate` | $($gate2Cmd.ExitCode) | $($gate2Cmd.Duration)s | -- | -- | -- | -- | -- | $(if ($gate2Passed) { "PASS" } else { "FAIL" }) |
+| 2 | `mvn flyway:migrate` | $($gate2Cmd.ExitCode) | $($gate2Cmd.Duration)s | -- | -- | -- | -- | -- | $(if ($gate2Passed) { "PASS" } else { "FAIL" }) |
 | 3 | `mvn test -Ppostgresql-acceptance` | $($gate3Cmd.ExitCode) | $($gate3Cmd.Duration)s | $gate3Tests | $gate3Failures | $gate3Errors | $gate3Skipped | $(if ($gate3VerifierExitCode -eq -1) { "SKIP" } elseif ($gate3VerifierExitCode -eq 0) { "PASS" } else { "FAIL" }) | $(if ($gate3Passed) { "PASS" } else { "FAIL" }) |
 | 4 | Sensitive code scan | $(if ($gate4.Passed) { 0 } else { 1 }) | $($gate4.Duration)s | -- | -- | -- | -- | -- | $(if ($gate4.Passed) { "PASS" } else { "FAIL" }) |
 
@@ -733,9 +738,9 @@ $(
     }
 )
 
-## Gate 2: Flyway Migration Validation
+## Gate 2: Flyway Migration Apply
 
-- **Command:** `mvn flyway:validate`
+- **Command:** `mvn flyway:migrate`
 - **Exit Code:** $($gate2Cmd.ExitCode)
 - **Duration:** $($gate2Cmd.Duration)s
 - **Result:** $(if ($gate2Passed) { "PASS" } else { "FAIL" })
