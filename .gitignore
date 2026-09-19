@@ -45,3 +45,14 @@ backup_restore_evidence.txt
 
 # Agent working notes (not project documentation)
 docs/superpowers/
+
+# Dev task journals / phase summaries — kept locally, NOT pushed to remote
+/*.md
+!README.md
+!CHANGELOG.md
+!BACKEND_OPERATION_GUIDE.md
+!RELEASE_READINESS_CHECKLIST.md
+!RELEASE_GATE_RESULT.md
+!AUDIT_COVERAGE_MATRIX.md
+!SYSTEM_MODULE_API_GAP_ANALYSIS.md
+!SQL_QUERY_COLLECTION_DESIGN.md
