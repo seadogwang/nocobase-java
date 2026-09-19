@@ -2,6 +2,7 @@ package com.nocobase;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.nocobase.repository.RoleRepository;
 import com.nocobase.repository.UserRepository;
 import com.nocobase.repository.UserRoleRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -11,30 +12,23 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
-import org.springframework.test.context.DynamicPropertyRegistry;
-import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.transaction.annotation.Transactional;
 
+import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 /**
  * Integration tests for the first-admin bootstrap flow.
- * <p>
- * Verifies:
- * <ul>
- *   <li>Empty DB creates admin user via POST /api/bootstrap:setup</li>
- *   <li>Duplicate bootstrap call returns 409 Conflict</li>
- *   <li>Sign-in with the bootstrapped admin credentials works</li>
- *   <li>Admin user can access protected admin endpoints</li>
- * </ul>
  */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 class BootstrapAdminTest {
 
     @Autowired
@@ -49,22 +43,21 @@ class BootstrapAdminTest {
     @Autowired
     private UserRoleRepository userRoleRepository;
 
-    @DynamicPropertySource
-    static void registerProperties(DynamicPropertyRegistry registry) {
-        registry.add("NOCOBASE_ADMIN_EMAIL", () -> "admin@nocobase.com");
-        registry.add("NOCOBASE_ADMIN_PASSWORD", () -> "Admin123!");
-        registry.add("NOCOBASE_ADMIN_NICKNAME", () -> "Super Admin");
-    }
+    @Autowired
+    private RoleRepository roleRepository;
 
-    /**
-     * Clean up any users created by TestDataInitializer so the bootstrap
-     * endpoint sees an empty users table.
-     */
     @BeforeEach
     @Transactional
     void setUp() {
         userRoleRepository.deleteAll();
         userRepository.deleteAll();
+    }
+
+    @Test
+    @DisplayName("Smoke: public endpoint is accessible")
+    void publicEndpointAccessible() throws Exception {
+        mockMvc.perform(get("/"))
+                .andExpect(status().isOk());
     }
 
     @Test
@@ -81,14 +74,48 @@ class BootstrapAdminTest {
     }
 
     @Test
+    @DisplayName("Bootstrap: slash route also works")
+    void bootstrapSlashRouteWorks() throws Exception {
+        mockMvc.perform(post("/api/bootstrap/setup")
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.email").value("admin@nocobase.com"))
+                .andExpect(jsonPath("$.data.nickname").value("Super Admin"))
+                .andExpect(jsonPath("$.data.id").isNumber())
+                .andExpect(jsonPath("$.data.password").doesNotExist())
+                .andExpect(jsonPath("$.data.createdAt").exists());
+    }
+
+    @Test
+    @DisplayName("Bootstrap: admin user gets both admin and root roles")
+    void bootstrapGrantsBothRoles() throws Exception {
+        String responseBody = mockMvc.perform(post("/api/bootstrap:setup")
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isCreated())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        JsonNode root = objectMapper.readTree(responseBody);
+        Long userId = root.get("data").get("id").asLong();
+
+        var userRoles = userRoleRepository.findByUserId(userId);
+        assertEquals(2, userRoles.size(), "Admin user should have exactly 2 roles");
+
+        var roleNames = userRoles.stream()
+                .map(ur -> roleRepository.findById(ur.getRoleId()).orElseThrow().getName())
+                .toList();
+        assertTrue(roleNames.contains("admin"), "Admin user should have admin role");
+        assertTrue(roleNames.contains("root"), "Admin user should have root role");
+    }
+
+    @Test
     @DisplayName("Bootstrap: duplicate call returns 409 Conflict")
     void bootstrapDuplicateReturns409() throws Exception {
-        // First call should succeed
         mockMvc.perform(post("/api/bootstrap:setup")
                         .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isCreated());
 
-        // Second call should be rejected
         mockMvc.perform(post("/api/bootstrap:setup")
                         .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isConflict())
@@ -100,12 +127,10 @@ class BootstrapAdminTest {
     @Test
     @DisplayName("Bootstrap: sign in with admin credentials works after bootstrap")
     void loginWorksAfterBootstrap() throws Exception {
-        // Bootstrap
         mockMvc.perform(post("/api/bootstrap:setup")
                         .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isCreated());
 
-        // Sign in
         mockMvc.perform(post("/api/auth:signIn")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"email\":\"admin@nocobase.com\",\"password\":\"Admin123!\"}"))
@@ -119,12 +144,10 @@ class BootstrapAdminTest {
     @Test
     @DisplayName("Bootstrap: admin user can access protected admin endpoints")
     void adminPermissionsWork() throws Exception {
-        // Bootstrap
         mockMvc.perform(post("/api/bootstrap:setup")
                         .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isCreated());
 
-        // Sign in to get a JWT token
         MvcResult signInResult = mockMvc.perform(post("/api/auth:signIn")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"email\":\"admin@nocobase.com\",\"password\":\"Admin123!\"}"))
@@ -135,13 +158,11 @@ class BootstrapAdminTest {
         JsonNode root = objectMapper.readTree(responseBody);
         String token = root.get("data").get("token").asText();
 
-        // Access admin-protected endpoint (GET /api/users:list)
         mockMvc.perform(get("/api/users:list")
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data").isArray());
 
-        // Also verify the /api/auth:check endpoint works
         mockMvc.perform(get("/api/auth:check")
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())

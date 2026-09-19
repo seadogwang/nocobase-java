@@ -51,6 +51,7 @@ public class NocobaseUrlFilter implements Filter {
     private boolean isHandledByOtherController(String path) {
         // 这些路径由专用 Controller 处理，不需要重写
         return path.startsWith("/api/auth") ||
+               path.startsWith("/api/bootstrap") ||
                path.startsWith("/api/users") ||
                path.startsWith("/api/roles") ||
                path.startsWith("/api/acl") ||

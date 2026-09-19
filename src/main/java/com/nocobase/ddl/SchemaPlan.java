@@ -9,11 +9,11 @@ import java.util.*;
  *
  * <p>Represents the difference between two schema states:
  * <ul>
- *   <li>{@link Action#MISSING_TABLE} — a table exists in target but not in current</li>
- *   <li>{@link Action#MISSING_COLUMN} — a column exists in target but not in current</li>
- *   <li>{@link Action#MISSING_INDEX} — an index exists in target but not in current</li>
- *   <li>{@link Action#INCOMPATIBLE_CHANGE} — a column type differs between current and target</li>
- *   <li>{@link Action#NO_OP} — no changes needed</li>
+ *   <li>{@link Action#MISSING_TABLE} -- a table exists in target but not in current</li>
+ *   <li>{@link Action#MISSING_COLUMN} -- a column exists in target but not in current</li>
+ *   <li>{@link Action#MISSING_INDEX} -- an index exists in target but not in current</li>
+ *   <li>{@link Action#INCOMPATIBLE_CHANGE} -- a column type differs between current and target</li>
+ *   <li>{@link Action#NO_OP} -- no changes needed</li>
  * </ul>
  *
  * <p>This plan is conservative: it identifies changes but does NOT auto-execute
@@ -169,7 +169,7 @@ public class SchemaPlan {
         // Table and column diff
         plans.addAll(generate(currentTables, targetTables, currentColumns, targetColumns));
 
-        // Remove the NO_OP sentinel — we'll add indexes and re-check at the end
+        // Remove the NO_OP sentinel -- we'll add indexes and re-check at the end
         if (plans.size() == 1 && plans.get(0).isNoOp()) {
             plans.clear();
         }

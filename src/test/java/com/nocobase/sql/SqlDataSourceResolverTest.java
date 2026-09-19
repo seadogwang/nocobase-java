@@ -1,8 +1,15 @@
 package com.nocobase.sql;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.nocobase.config.NocobaseDataSourceProperties;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
@@ -34,6 +41,29 @@ class SqlDataSourceResolverTest {
 
     @Autowired
     private NocobaseDataSourceProperties dataSourceProperties;
+
+    private ListAppender<ILoggingEvent> resolverAppender;
+    private Level originalResolverLevel;
+    private static final org.slf4j.Logger RESOLVER_LOGGER =
+            LoggerFactory.getLogger(SqlDataSourceResolver.class);
+
+    @BeforeEach
+    void attachAppender() {
+        Logger logger = (Logger) RESOLVER_LOGGER;
+        originalResolverLevel = logger.getLevel();
+        logger.setLevel(Level.ALL);
+        resolverAppender = new ListAppender<>();
+        resolverAppender.start();
+        logger.addAppender(resolverAppender);
+    }
+
+    @AfterEach
+    void detachAppender() {
+        Logger logger = (Logger) RESOLVER_LOGGER;
+        logger.detachAppender(resolverAppender);
+        logger.setLevel(originalResolverLevel);
+        resolverAppender.stop();
+    }
 
     @Test
     @DisplayName("resolve 'main' key returns non-null JdbcTemplate")
@@ -139,5 +169,85 @@ class SqlDataSourceResolverTest {
         assertNotNull(dialect, "Main data source dialect should not be null");
         assertInstanceOf(H2SqlDialect.class, dialect,
                 "Main data source (H2 test) should resolve to H2SqlDialect");
+    }
+
+    // ------------------------------------------------------------------
+    // Phase-21 Agent H: bounded repeated-failure logging + sanitization
+    // ------------------------------------------------------------------
+
+    /**
+     * Register an external data source with a non-existent JDBC driver so
+     * resolve() fails fast at Class.forName without ever opening a socket.
+     * Uses a unique key per run to avoid shared-state contamination across
+     * test methods (the resolver is a singleton with a persistent
+     * unavailableDataSources set).
+     */
+    private String registerFailingDataSource() {
+        String key = "bad_obs_" + System.nanoTime();
+        NocobaseDataSourceProperties.DataSourceConfig cfg =
+                new NocobaseDataSourceProperties.DataSourceConfig();
+        cfg.setUrl("jdbc:postgresql://localhost:65432/nosuchdb?user=leak&password=secret123");
+        cfg.setDriverClassName("com.example.NonexistentDriverObs");
+        cfg.setUsername("leak");
+        cfg.setPassword("secret123");
+        cfg.setEnabled(true);
+        cfg.setReadOnly(true);
+        cfg.setDialect("postgresql");
+        dataSourceProperties.getDataSources().put(key, cfg);
+        return key;
+    }
+
+    @Test
+    @DisplayName("Phase-21 H: repeated datasource failure logs the creation error only once (bounded)")
+    void repeatedFailureIsBounded() {
+        String key = registerFailingDataSource();
+        // First resolve: logs ERROR "Failed to create data source" + marks unavailable.
+        assertThrows(DataSourceUnavailableException.class, () -> resolver.resolve(key),
+                "first resolve of a failing datasource must throw DataSourceUnavailableException");
+        int errorsAfterFirst = countCreationErrors();
+        assertTrue(errorsAfterFirst >= 1,
+                "first failure should log the creation error at least once; got " + errorsAfterFirst);
+
+        // Subsequent resolves: hit the unavailableDataSources fast-path and must
+        // NOT re-emit the full creation-error log (bounded volume).
+        for (int i = 0; i < 5; i++) {
+            assertThrows(DataSourceUnavailableException.class, () -> resolver.resolve(key),
+                    "repeated resolve of an unavailable datasource must throw");
+        }
+        int errorsAfterRepeats = countCreationErrors();
+        assertEquals(errorsAfterFirst, errorsAfterRepeats,
+                "repeated failures must not re-log the creation error (bounded); first="
+                        + errorsAfterFirst + " afterRepeats=" + errorsAfterRepeats);
+    }
+
+    @Test
+    @DisplayName("Phase-21 H: datasource failure logs contain no raw URL, host, or credentials")
+    void failureLogsAreSanitized() {
+        String key = registerFailingDataSource();
+        assertThrows(DataSourceUnavailableException.class, () -> resolver.resolve(key));
+
+        StringBuilder allLogs = new StringBuilder();
+        for (ILoggingEvent ev : resolverAppender.list) {
+            allLogs.append(ev.getFormattedMessage()).append('\n');
+        }
+        String logs = allLogs.toString();
+        assertFalse(logs.contains("secret123"), "failure log must not leak the password: " + logs);
+        assertFalse(logs.contains("leak"), "failure log must not leak the username: " + logs);
+        assertFalse(logs.contains("jdbc:postgresql://localhost:65432"),
+                "failure log must not leak the raw JDBC URL: " + logs);
+        assertFalse(logs.contains("nosuchdb"),
+                "failure log must not leak the database name: " + logs);
+    }
+
+    private int countCreationErrors() {
+        int count = 0;
+        for (ILoggingEvent ev : resolverAppender.list) {
+            if (ev.getLevel() == Level.ERROR
+                    && ev.getFormattedMessage() != null
+                    && ev.getFormattedMessage().contains("Failed to create data source")) {
+                count++;
+            }
+        }
+        return count;
     }
 }

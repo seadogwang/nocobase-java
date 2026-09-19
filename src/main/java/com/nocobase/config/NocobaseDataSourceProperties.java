@@ -42,7 +42,7 @@ public class NocobaseDataSourceProperties implements EnvironmentAware {
 
     private Environment environment;
 
-    // ── getters / setters ──────────────────────────────────────────────
+    // -- getters / setters ----------------------------------------------
 
     public Map<String, DataSourceConfig> getDataSources() {
         return dataSources;
@@ -57,7 +57,7 @@ public class NocobaseDataSourceProperties implements EnvironmentAware {
         this.environment = environment;
     }
 
-    // ── convenience accessors ──────────────────────────────────────────
+    // -- convenience accessors ------------------------------------------
 
     /**
      * Returns the main data source config (auto-created from {@code spring.datasource}).
@@ -82,7 +82,7 @@ public class NocobaseDataSourceProperties implements EnvironmentAware {
         return config != null && config.isEnabled();
     }
 
-    // ── lifecycle ──────────────────────────────────────────────────────
+    // -- lifecycle ------------------------------------------------------
 
     /**
      * Auto-creates the "main" entry from {@code spring.datasource} (if not explicitly
@@ -233,9 +233,9 @@ public class NocobaseDataSourceProperties implements EnvironmentAware {
         return SqlErrorSanitizer.sanitizeForLog(message);
     }
 
-    // ═══════════════════════════════════════════════════════════════════
+    // ===================================================================
     // Inner class: DataSourceConfig
-    // ═══════════════════════════════════════════════════════════════════
+    // ===================================================================
 
     public static class DataSourceConfig {
 

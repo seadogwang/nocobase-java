@@ -4,7 +4,7 @@ import java.util.List;
 
 /**
  * Represents a generated SQL execution plan (SQL string + bound parameters).
- * Does not execute SQL — it is a pure data object consumed by JdbcTemplate.
+ * Does not execute SQL -- it is a pure data object consumed by JdbcTemplate.
  */
 public class SqlPlan {
 

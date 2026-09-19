@@ -20,3 +20,28 @@
 # Logs
 *.log
 /runtime_logs/
+
+# HAR recordings
+*.har
+# Keep the sanitized HAR fixture (test resource); exclude all raw captures.
+!src/test/resources/har/sanitized-sample.har
+
+# Secrets / credentials / generated dumps — never commit
+*.dump
+*.sql.dump
+*.pem
+*.key
+*.keystore
+.env
+.env.*
+
+# Test output/reports
+/test-output/
+/test-reports/
+
+# Runtime smoke/backup evidence (regenerated on demand; non-secret)
+smoke_evidence.txt
+backup_restore_evidence.txt
+
+# Agent working notes (not project documentation)
+docs/superpowers/

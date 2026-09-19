@@ -20,7 +20,7 @@ import java.util.stream.Collectors;
 
 /**
  * Service for ACL management.
- * Encapsulates all repository access — controllers must NOT directly inject repositories.
+ * Encapsulates all repository access -- controllers must NOT directly inject repositories.
  * Transaction boundaries are in the service layer.
  */
 @Service
@@ -236,52 +236,65 @@ public class AclManagementService {
 
     @Transactional
     public Map<String, Object> updateAction(Map<String, Object> body) {
-        Long id = getLong(body, "id");
-        if (id == null) throw new IllegalArgumentException("id is required");
+        try {
+            Long id = getLong(body, "id");
+            if (id == null) throw new IllegalArgumentException("id is required");
 
-        RoleResourceAction rra = roleResourceActionRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("RoleResourceAction", String.valueOf(id)));
+            RoleResourceAction rra = roleResourceActionRepository.findById(id)
+                    .orElseThrow(() -> new ResourceNotFoundException("RoleResourceAction", String.valueOf(id)));
 
-        if (body.containsKey("action")) {
-            String newAction = (String) body.get("action");
-            if (!Set.of("list", "get", "create", "update", "destroy").contains(newAction)) {
-                throw new IllegalArgumentException("Invalid action: " + newAction
-                        + ". Must be one of: list, get, create, update, destroy");
-            }
-            if (!newAction.equals(rra.getAction())) {
-                List<RoleResourceAction> existingActions = roleResourceActionRepository
-                        .findByRoleResourceId(rra.getRoleResourceId());
-                boolean hasDuplicate = existingActions.stream()
-                        .anyMatch(a -> !a.getId().equals(rra.getId()) && a.getAction().equals(newAction));
-                if (hasDuplicate) {
-                    throw new IllegalArgumentException(
-                            "Action '" + newAction + "' already exists for this roleResource");
+            if (body.containsKey("action")) {
+                String newAction = (String) body.get("action");
+                if (!Set.of("list", "get", "create", "update", "destroy").contains(newAction)) {
+                    throw new IllegalArgumentException("Invalid action: " + newAction
+                            + ". Must be one of: list, get, create, update, destroy");
                 }
+                if (!newAction.equals(rra.getAction())) {
+                    List<RoleResourceAction> existingActions = roleResourceActionRepository
+                            .findByRoleResourceId(rra.getRoleResourceId());
+                    boolean hasDuplicate = existingActions.stream()
+                            .anyMatch(a -> !a.getId().equals(rra.getId()) && a.getAction().equals(newAction));
+                    if (hasDuplicate) {
+                        throw new IllegalArgumentException(
+                                "Action '" + newAction + "' already exists for this roleResource");
+                    }
+                }
+                rra.setAction(newAction);
             }
-            rra.setAction(newAction);
-        }
-        if (body.containsKey("fields")) {
-            String newFields = (String) body.get("fields");
-            RoleResource rr = roleResourceRepository.findById(rra.getRoleResourceId())
-                    .orElseThrow(() -> new ResourceNotFoundException("RoleResource",
-                            String.valueOf(rra.getRoleResourceId())));
-            validateFields(newFields, rr.getResourceName());
-            rra.setFields(newFields);
-        }
+            if (body.containsKey("fields")) {
+                String newFields = (String) body.get("fields");
+                RoleResource rr = roleResourceRepository.findById(rra.getRoleResourceId())
+                        .orElseThrow(() -> new ResourceNotFoundException("RoleResource",
+                                String.valueOf(rra.getRoleResourceId())));
+                validateFields(newFields, rr.getResourceName());
+                rra.setFields(newFields);
+            }
 
-        RoleResourceAction updated = roleResourceActionRepository.save(rra);
-        auditLogService.auditSuccess("update", "aclAction", String.valueOf(updated.getId()),
-                Map.of("roleResourceId", updated.getRoleResourceId(), "action", updated.getAction()));
-        return toActionResponse(updated);
+            RoleResourceAction updated = roleResourceActionRepository.save(rra);
+            auditLogService.auditSuccess("update", "aclAction", String.valueOf(updated.getId()),
+                    Map.of("roleResourceId", updated.getRoleResourceId(), "action", updated.getAction()));
+            return toActionResponse(updated);
+        } catch (Exception e) {
+            Long id = getLong(body, "id");
+            auditLogService.auditFailure("update", "aclAction", id != null ? String.valueOf(id) : "unknown",
+                    Map.of("error", e.getMessage() != null ? e.getMessage() : "Unknown error"));
+            throw e;
+        }
     }
 
     @Transactional
     public void destroyAction(Long id) {
-        RoleResourceAction rra = roleResourceActionRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("RoleResourceAction", String.valueOf(id)));
-        roleResourceActionRepository.delete(rra);
-        auditLogService.auditSuccess("destroy", "aclAction", String.valueOf(id),
-                Map.of("roleResourceId", rra.getRoleResourceId(), "action", rra.getAction()));
+        try {
+            RoleResourceAction rra = roleResourceActionRepository.findById(id)
+                    .orElseThrow(() -> new ResourceNotFoundException("RoleResourceAction", String.valueOf(id)));
+            roleResourceActionRepository.delete(rra);
+            auditLogService.auditSuccess("destroy", "aclAction", String.valueOf(id),
+                    Map.of("roleResourceId", rra.getRoleResourceId(), "action", rra.getAction()));
+        } catch (Exception e) {
+            auditLogService.auditFailure("destroy", "aclAction", String.valueOf(id),
+                    Map.of("error", e.getMessage() != null ? e.getMessage() : "Unknown error"));
+            throw e;
+        }
     }
 
     // ========================================================================
@@ -297,90 +310,110 @@ public class AclManagementService {
 
     @Transactional
     public Map<String, Object> createScope(Long roleResourceId, String scopeJson, String action) {
-        validateScopeJson(scopeJson);
+        try {
+            validateScopeJson(scopeJson);
 
-        if (action != null && !action.isEmpty()) {
-            if (!Set.of("list", "get", "create", "update", "destroy").contains(action)) {
-                throw new IllegalArgumentException("Invalid action: " + action
-                        + ". Must be one of: list, get, create, update, destroy");
+            if (action != null && !action.isEmpty()) {
+                if (!Set.of("list", "get", "create", "update", "destroy").contains(action)) {
+                    throw new IllegalArgumentException("Invalid action: " + action
+                            + ". Must be one of: list, get, create, update, destroy");
+                }
             }
-        }
 
-        if (!roleResourceRepository.existsById(roleResourceId)) {
-            throw new ResourceNotFoundException("RoleResource", String.valueOf(roleResourceId));
-        }
+            if (!roleResourceRepository.existsById(roleResourceId)) {
+                throw new ResourceNotFoundException("RoleResource", String.valueOf(roleResourceId));
+            }
 
-        List<RoleResourceScope> existingScopes = roleResourceScopeRepository
-                .findByRoleResourceId(roleResourceId);
-        String targetAction = (action != null && !action.isEmpty()) ? action : null;
-        boolean hasDuplicate = existingScopes.stream()
-                .anyMatch(s -> Objects.equals(s.getAction(), targetAction));
-        if (hasDuplicate) {
-            throw new IllegalArgumentException(
-                    "Scope already exists for this roleResource"
-                    + (targetAction != null ? " and action '" + targetAction + "'" : ""));
-        }
+            List<RoleResourceScope> existingScopes = roleResourceScopeRepository
+                    .findByRoleResourceId(roleResourceId);
+            String targetAction = (action != null && !action.isEmpty()) ? action : null;
+            boolean hasDuplicate = existingScopes.stream()
+                    .anyMatch(s -> Objects.equals(s.getAction(), targetAction));
+            if (hasDuplicate) {
+                throw new IllegalArgumentException(
+                        "Scope already exists for this roleResource"
+                        + (targetAction != null ? " and action '" + targetAction + "'" : ""));
+            }
 
-        RoleResourceScope scope = new RoleResourceScope(roleResourceId, scopeJson, action);
-        scope = roleResourceScopeRepository.save(scope);
-        auditLogService.auditSuccess("create", "aclScope", String.valueOf(scope.getId()),
-                Map.of("roleResourceId", roleResourceId, "action", action != null ? action : ""));
-        return toScopeResponse(scope);
+            RoleResourceScope scope = new RoleResourceScope(roleResourceId, scopeJson, action);
+            scope = roleResourceScopeRepository.save(scope);
+            auditLogService.auditSuccess("create", "aclScope", String.valueOf(scope.getId()),
+                    Map.of("roleResourceId", roleResourceId, "action", action != null ? action : ""));
+            return toScopeResponse(scope);
+        } catch (Exception e) {
+            auditLogService.auditFailure("create", "aclScope", String.valueOf(roleResourceId),
+                    Map.of("roleResourceId", roleResourceId, "action", action != null ? action : "",
+                            "error", e.getMessage() != null ? e.getMessage() : "Unknown error"));
+            throw e;
+        }
     }
 
     @Transactional
     public Map<String, Object> updateScope(Map<String, Object> body) {
-        Long id = getLong(body, "id");
-        if (id == null) throw new IllegalArgumentException("id is required");
+        try {
+            Long id = getLong(body, "id");
+            if (id == null) throw new IllegalArgumentException("id is required");
 
-        RoleResourceScope scope = roleResourceScopeRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("RoleResourceScope", String.valueOf(id)));
+            RoleResourceScope scope = roleResourceScopeRepository.findById(id)
+                    .orElseThrow(() -> new ResourceNotFoundException("RoleResourceScope", String.valueOf(id)));
 
-        if (body.containsKey("scope")) {
-            String newScope = (String) body.get("scope");
-            validateScopeJson(newScope);
-            scope.setScope(newScope);
-        }
-        if (body.containsKey("action")) {
-            String newAction = (String) body.get("action");
-            if (newAction != null && !newAction.isEmpty()) {
-                if (!Set.of("list", "get", "create", "update", "destroy").contains(newAction)) {
-                    throw new IllegalArgumentException("Invalid action: " + newAction
-                            + ". Must be one of: list, get, create, update, destroy");
-                }
+            if (body.containsKey("scope")) {
+                String newScope = (String) body.get("scope");
+                validateScopeJson(newScope);
+                scope.setScope(newScope);
             }
-            String targetAction = (newAction != null && !newAction.isEmpty()) ? newAction : null;
-            if (!Objects.equals(targetAction, scope.getAction())) {
-                final String tgtAction = targetAction;
-                final RoleResourceScope currentScope = scope;
-                List<RoleResourceScope> existingScopes = roleResourceScopeRepository
-                        .findByRoleResourceId(currentScope.getRoleResourceId());
-                boolean hasDuplicate = existingScopes.stream()
-                        .anyMatch(s -> !s.getId().equals(currentScope.getId())
-                                && Objects.equals(s.getAction(), tgtAction));
-                if (hasDuplicate) {
-                    throw new IllegalArgumentException(
-                            "Scope already exists for this roleResource"
-                            + (tgtAction != null ? " and action '" + tgtAction + "'" : ""));
+            if (body.containsKey("action")) {
+                String newAction = (String) body.get("action");
+                if (newAction != null && !newAction.isEmpty()) {
+                    if (!Set.of("list", "get", "create", "update", "destroy").contains(newAction)) {
+                        throw new IllegalArgumentException("Invalid action: " + newAction
+                                + ". Must be one of: list, get, create, update, destroy");
+                    }
                 }
+                String targetAction = (newAction != null && !newAction.isEmpty()) ? newAction : null;
+                if (!Objects.equals(targetAction, scope.getAction())) {
+                    final String tgtAction = targetAction;
+                    final RoleResourceScope currentScope = scope;
+                    List<RoleResourceScope> existingScopes = roleResourceScopeRepository
+                            .findByRoleResourceId(currentScope.getRoleResourceId());
+                    boolean hasDuplicate = existingScopes.stream()
+                            .anyMatch(s -> !s.getId().equals(currentScope.getId())
+                                    && Objects.equals(s.getAction(), tgtAction));
+                    if (hasDuplicate) {
+                        throw new IllegalArgumentException(
+                                "Scope already exists for this roleResource"
+                                + (tgtAction != null ? " and action '" + tgtAction + "'" : ""));
+                    }
+                }
+                scope.setAction(newAction);
             }
-            scope.setAction(newAction);
-        }
 
-        scope = roleResourceScopeRepository.save(scope);
-        auditLogService.auditSuccess("update", "aclScope", String.valueOf(scope.getId()),
-                Map.of("roleResourceId", scope.getRoleResourceId(), "action",
-                        scope.getAction() != null ? scope.getAction() : ""));
-        return toScopeResponse(scope);
+            scope = roleResourceScopeRepository.save(scope);
+            auditLogService.auditSuccess("update", "aclScope", String.valueOf(scope.getId()),
+                    Map.of("roleResourceId", scope.getRoleResourceId(), "action",
+                            scope.getAction() != null ? scope.getAction() : ""));
+            return toScopeResponse(scope);
+        } catch (Exception e) {
+            Long id = getLong(body, "id");
+            auditLogService.auditFailure("update", "aclScope", id != null ? String.valueOf(id) : "unknown",
+                    Map.of("error", e.getMessage() != null ? e.getMessage() : "Unknown error"));
+            throw e;
+        }
     }
 
     @Transactional
     public void destroyScope(Long id) {
-        RoleResourceScope scope = roleResourceScopeRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("RoleResourceScope", String.valueOf(id)));
-        roleResourceScopeRepository.delete(scope);
-        auditLogService.auditSuccess("destroy", "aclScope", String.valueOf(id),
-                Map.of("roleResourceId", scope.getRoleResourceId()));
+        try {
+            RoleResourceScope scope = roleResourceScopeRepository.findById(id)
+                    .orElseThrow(() -> new ResourceNotFoundException("RoleResourceScope", String.valueOf(id)));
+            roleResourceScopeRepository.delete(scope);
+            auditLogService.auditSuccess("destroy", "aclScope", String.valueOf(id),
+                    Map.of("roleResourceId", scope.getRoleResourceId()));
+        } catch (Exception e) {
+            auditLogService.auditFailure("destroy", "aclScope", String.valueOf(id),
+                    Map.of("error", e.getMessage() != null ? e.getMessage() : "Unknown error"));
+            throw e;
+        }
     }
 
     // ========================================================================

@@ -49,6 +49,18 @@ class AuditLogIntegrationTest {
     @Order(1)
     @DisplayName("Audit write failure causes business transaction rollback")
     void auditWriteFailureCausesRollback() {
+        // Ensure the title exists in the database before the test
+        settingsRepository.findBySettingKey("title").ifPresentOrElse(
+                existing -> {},
+                () -> {
+                    SystemSettings defaultTitle = new SystemSettings();
+                    defaultTitle.setSettingKey("title");
+                    defaultTitle.setSettingValue("NocoBase Java");
+                    defaultTitle.setValueType("string");
+                    settingsRepository.save(defaultTitle);
+                }
+        );
+
         // Record the current value to restore later
         String originalTitle = settingsRepository.findBySettingKey("title")
                 .map(SystemSettings::getSettingValue).orElse("NocoBase Java");
@@ -60,10 +72,10 @@ class AuditLogIntegrationTest {
         try {
             systemSettingsService.update(Map.of("title", "Should Be Rolled Back"));
             fail("Expected exception was not thrown");
-        } catch (AuditLogService.AuditLogWriteException e) {
+        } catch (RuntimeException e) {
             // Expected - audit write failed
             assertTrue(e.getMessage().contains("Audit log write failed"),
-                    "Exception should indicate audit write failure");
+                    "Exception should indicate audit write failure: " + e.getMessage());
         }
 
         // Verify business data was rolled back

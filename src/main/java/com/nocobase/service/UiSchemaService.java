@@ -16,7 +16,7 @@ import java.util.*;
 
 /**
  * Service for UI Schema operations with transactional guarantees.
- * Encapsulates all repository access — controllers must NOT directly inject repositories.
+ * Encapsulates all repository access -- controllers must NOT directly inject repositories.
  * Transaction boundaries are in the service layer.
  */
 @Service
@@ -123,92 +123,105 @@ public class UiSchemaService {
 
     @Transactional
     public Map<String, Object> insertAdjacent(String targetUid, String position, Map<String, Object> schema) {
-        if (position == null || !Set.of("beforeBegin", "afterBegin", "beforeEnd", "afterEnd").contains(position)) {
-            throw new IllegalArgumentException(
-                "position must be one of: beforeBegin, afterBegin, beforeEnd, afterEnd");
-        }
+        try {
+            if (position == null || !Set.of("beforeBegin", "afterBegin", "beforeEnd", "afterEnd").contains(position)) {
+                throw new IllegalArgumentException(
+                    "position must be one of: beforeBegin, afterBegin, beforeEnd, afterEnd");
+            }
 
-        String newUid = (String) schema.getOrDefault("x-uid", UUID.randomUUID().toString().replace("-", ""));
+            String newUid = (String) schema.getOrDefault("x-uid", UUID.randomUUID().toString().replace("-", ""));
 
-        if (existsByUid(newUid)) {
-            throw new IllegalArgumentException(
-                "UI Schema with uid '" + newUid + "' already exists. uid must be unique.");
-        }
+            if (existsByUid(newUid)) {
+                throw new IllegalArgumentException(
+                    "UI Schema with uid '" + newUid + "' already exists. uid must be unique.");
+            }
 
-        String newSchemaUid = (String) schema.getOrDefault("x-schema-uid", newUid);
+            String newSchemaUid = (String) schema.getOrDefault("x-schema-uid", newUid);
 
-        UiSchema target = findByUid(targetUid)
-                .orElseThrow(() -> new com.nocobase.web.ResourceNotFoundException("UI Schema", targetUid));
+            UiSchema target = findByUid(targetUid)
+                    .orElseThrow(() -> new com.nocobase.web.ResourceNotFoundException("UI Schema", targetUid));
 
-        String parentUid = target.getParentUid();
+            String parentUid = target.getParentUid();
 
-        UiSchema newNode = new UiSchema();
-        newNode.setUid(newUid);
-        newNode.setSchemaUid(newSchemaUid);
-        newNode.setSchema(toJsonString(schema));
+            UiSchema newNode = new UiSchema();
+            newNode.setUid(newUid);
+            newNode.setSchemaUid(newSchemaUid);
+            newNode.setSchema(toJsonString(schema));
 
-        if ("beforeBegin".equals(position) || "afterEnd".equals(position)) {
-            newNode.setParentUid(parentUid);
-            List<UiSchema> siblings = findByParentUidOrderBySortOrderAsc(parentUid);
+            if ("beforeBegin".equals(position) || "afterEnd".equals(position)) {
+                newNode.setParentUid(parentUid);
+                List<UiSchema> siblings = findByParentUidOrderBySortOrderAsc(parentUid);
 
-            if ("beforeBegin".equals(position)) {
-                newNode.setSortOrder(target.getSortOrder());
-                for (UiSchema sib : siblings) {
-                    if (sib.getSortOrder() >= target.getSortOrder()) {
-                        sib.setSortOrder(sib.getSortOrder() + 1);
-                        save(sib);
+                if ("beforeBegin".equals(position)) {
+                    newNode.setSortOrder(target.getSortOrder());
+                    for (UiSchema sib : siblings) {
+                        if (sib.getSortOrder() >= target.getSortOrder()) {
+                            sib.setSortOrder(sib.getSortOrder() + 1);
+                            save(sib);
+                        }
                     }
+                } else {
+                    newNode.setSortOrder(target.getSortOrder() + 1);
+                    for (UiSchema sib : siblings) {
+                        if (sib.getSortOrder() > target.getSortOrder()) {
+                            sib.setSortOrder(sib.getSortOrder() + 1);
+                            save(sib);
+                        }
+                    }
+                }
+            } else if ("afterBegin".equals(position)) {
+                newNode.setParentUid(targetUid);
+                List<UiSchema> children = findByParentUidOrderBySortOrderAsc(targetUid);
+                newNode.setSortOrder(0);
+                for (UiSchema child : children) {
+                    child.setSortOrder(child.getSortOrder() + 1);
+                    save(child);
                 }
             } else {
-                newNode.setSortOrder(target.getSortOrder() + 1);
-                for (UiSchema sib : siblings) {
-                    if (sib.getSortOrder() > target.getSortOrder()) {
-                        sib.setSortOrder(sib.getSortOrder() + 1);
-                        save(sib);
-                    }
-                }
+                newNode.setParentUid(targetUid);
+                List<UiSchema> children = findByParentUidOrderBySortOrderAsc(targetUid);
+                newNode.setSortOrder(children.size());
             }
-        } else if ("afterBegin".equals(position)) {
-            newNode.setParentUid(targetUid);
-            List<UiSchema> children = findByParentUidOrderBySortOrderAsc(targetUid);
-            newNode.setSortOrder(0);
-            for (UiSchema child : children) {
-                child.setSortOrder(child.getSortOrder() + 1);
-                save(child);
-            }
-        } else {
-            newNode.setParentUid(targetUid);
-            List<UiSchema> children = findByParentUidOrderBySortOrderAsc(targetUid);
-            newNode.setSortOrder(children.size());
-        }
 
-        save(newNode);
-        auditLogService.auditSuccess("create", "uiSchema", newUid,
-                Map.of("position", position, "targetUid", targetUid));
-        return Map.of("uid", newUid);
+            save(newNode);
+            auditLogService.auditSuccess("create", "uiSchema", newUid,
+                    Map.of("position", position, "targetUid", targetUid));
+            return Map.of("uid", newUid);
+        } catch (Exception e) {
+            String newUid = (String) schema.getOrDefault("x-uid", "unknown");
+            auditLogService.auditFailure("create", "uiSchema", newUid,
+                    Map.of("error", e.getMessage() != null ? e.getMessage() : "Unknown error"));
+            throw e;
+        }
     }
 
     @Transactional
     public Map<String, Object> patch(String uid, Map<String, Object> schema, String name) {
-        UiSchema node = findByUid(uid)
-                .orElseThrow(() -> new com.nocobase.web.ResourceNotFoundException("UI Schema", uid));
+        try {
+            UiSchema node = findByUid(uid)
+                    .orElseThrow(() -> new com.nocobase.web.ResourceNotFoundException("UI Schema", uid));
 
-        if (schema != null) {
-            Map<String, Object> existing = parseSchema(node.getSchema());
-            deepMerge(existing, schema);
-            node.setSchema(toJsonString(existing));
+            if (schema != null) {
+                Map<String, Object> existing = parseSchema(node.getSchema());
+                deepMerge(existing, schema);
+                node.setSchema(toJsonString(existing));
+            }
+
+            if (name != null) {
+                node.setName(name);
+            }
+
+            node.setUpdatedAt(LocalDateTime.now());
+            save(node);
+            auditLogService.auditSuccess("update", "uiSchema", uid,
+                    Map.of("name", name != null ? name : ""));
+
+            return Map.of("uid", uid);
+        } catch (Exception e) {
+            auditLogService.auditFailure("update", "uiSchema", uid,
+                    Map.of("error", e.getMessage() != null ? e.getMessage() : "Unknown error"));
+            throw e;
         }
-
-        if (name != null) {
-            node.setName(name);
-        }
-
-        node.setUpdatedAt(LocalDateTime.now());
-        save(node);
-        auditLogService.auditSuccess("update", "uiSchema", uid,
-                Map.of("name", name != null ? name : ""));
-
-        return Map.of("uid", uid);
     }
 
     /**
@@ -216,8 +229,14 @@ public class UiSchemaService {
      */
     @Transactional
     public void deleteRecursiveByUid(String nodeUid) {
-        deleteRecursiveByUidInternal(nodeUid);
-        auditLogService.auditSuccess("destroy", "uiSchema", nodeUid, Map.of());
+        try {
+            deleteRecursiveByUidInternal(nodeUid);
+            auditLogService.auditSuccess("destroy", "uiSchema", nodeUid, Map.of());
+        } catch (Exception e) {
+            auditLogService.auditFailure("destroy", "uiSchema", nodeUid,
+                    Map.of("error", e.getMessage() != null ? e.getMessage() : "Unknown error"));
+            throw e;
+        }
     }
 
     private void deleteRecursiveByUidInternal(String nodeUid) {

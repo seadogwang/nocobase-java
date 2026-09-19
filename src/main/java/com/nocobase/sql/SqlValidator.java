@@ -8,7 +8,7 @@ import java.util.regex.Pattern;
  * Blocks DDL/DML, multi-statement, comment injection, and JDBC {@code ?} parameters.
  *
  * <p>All checks use lexical scanning to correctly handle string literals, quoted identifiers,
- * and PostgreSQL {@code ::type} casts — checks only fire on content outside strings/identifiers.
+ * and PostgreSQL {@code ::type} casts -- checks only fire on content outside strings/identifiers.
  * Named parameters ({@code :param}) are allowed (Phase 2).</p>
  */
 public class SqlValidator {
@@ -48,17 +48,17 @@ public class SqlValidator {
         // strings or identifiers.
         String cleanSql = stripStringsAndIdentifiers(trimmed);
 
-        // Block any semicolons (multi-statement) — only outside strings/identifiers
+        // Block any semicolons (multi-statement) -- only outside strings/identifiers
         if (cleanSql.contains(";")) {
             throw new IllegalArgumentException("SQL collection query must not contain semicolons");
         }
 
-        // Block comment injection — only outside strings/identifiers
+        // Block comment injection -- only outside strings/identifiers
         if (COMMENT_PATTERN.matcher(cleanSql).find()) {
             throw new IllegalArgumentException("SQL collection query must not contain comments");
         }
 
-        // Block JDBC ? parameters — only outside strings/identifiers
+        // Block JDBC ? parameters -- only outside strings/identifiers
         if (cleanSql.contains("?")) {
             throw new IllegalArgumentException("SQL collection query must not contain JDBC '?' parameters");
         }
@@ -83,7 +83,7 @@ public class SqlValidator {
      * <p>Also handles:
      * <ul>
      *   <li>Escaped quotes: {@code ''} inside strings, {@code ""} inside identifiers</li>
-     *   <li>PostgreSQL {@code ::type} casts — preserved as-is (not stripped)</li>
+     *   <li>PostgreSQL {@code ::type} casts -- preserved as-is (not stripped)</li>
      * </ul>
      */
     static String stripStringsAndIdentifiers(String sql) {
@@ -95,14 +95,14 @@ public class SqlValidator {
             char c = sql.charAt(i);
 
             if (c == '\'') {
-                // Single-quoted string literal — replace with spaces
+                // Single-quoted string literal -- replace with spaces
                 i = skipSingleQuotedString(sql, i);
                 out.append(' ');
                 continue;
             }
 
             if (c == '"') {
-                // Double-quoted identifier — replace with spaces
+                // Double-quoted identifier -- replace with spaces
                 i = skipDoubleQuotedIdentifier(sql, i);
                 out.append(' ');
                 continue;
@@ -137,7 +137,7 @@ public class SqlValidator {
                 i++;
             }
         }
-        // Unterminated string — return to end
+        // Unterminated string -- return to end
         return len;
     }
 
@@ -163,7 +163,7 @@ public class SqlValidator {
                 i++;
             }
         }
-        // Unterminated identifier — return to end
+        // Unterminated identifier -- return to end
         return len;
     }
 }

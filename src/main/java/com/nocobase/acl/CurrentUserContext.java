@@ -66,7 +66,7 @@ public class CurrentUserContext {
 
     /**
      * Get the role names for the current user, resolved from RoleRepository.
-     * Returns actual role names like "admin", "root", "member" — not role IDs.
+     * Returns actual role names like "admin", "root", "member" -- not role IDs.
      */
     public List<String> getCurrentUserRoles() {
         return getCurrentUserId()

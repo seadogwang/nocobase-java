@@ -4,6 +4,7 @@ import com.nocobase.acl.AclService;
 import com.nocobase.runtime.CollectionDefinition;
 import com.nocobase.runtime.CollectionRuntimeService;
 import com.nocobase.runtime.RelationDefinition;
+import com.nocobase.service.AuditLogService;
 import com.nocobase.web.ForbiddenException;
 import com.nocobase.web.ResourceNotFoundException;
 import org.slf4j.Logger;
@@ -16,7 +17,7 @@ import java.util.stream.Collectors;
 
 /**
  * Handles NocoBase association resource actions.
- * All data access goes through DynamicRepository — no direct JdbcTemplate usage.
+ * All data access goes through DynamicRepository -- no direct JdbcTemplate usage.
  */
 @Service
 public class AssociationActionService {
@@ -32,13 +33,16 @@ public class AssociationActionService {
     private final CollectionRuntimeService runtimeService;
     private final DynamicRepository dynamicRepository;
     private final AclService aclService;
+    private final AuditLogService auditLogService;
 
     public AssociationActionService(CollectionRuntimeService runtimeService,
                                      DynamicRepository dynamicRepository,
-                                     AclService aclService) {
+                                     AclService aclService,
+                                     AuditLogService auditLogService) {
         this.runtimeService = runtimeService;
         this.dynamicRepository = dynamicRepository;
         this.aclService = aclService;
+        this.auditLogService = auditLogService;
     }
 
     public static AssociationRequest parse(String resourceName) {
@@ -80,30 +84,39 @@ public class AssociationActionService {
 
     @Transactional
     public void add(String resourceName, Object sourceId, Object targetId) {
-        AssociationRequest req = parse(resourceName);
-        CollectionDefinition sourceDef = runtimeService.get(req.source());
+        try {
+            AssociationRequest req = parse(resourceName);
+            CollectionDefinition sourceDef = runtimeService.get(req.source());
 
-        // P1-H: SQL collection add/remove/set must be rejected
-        checkNotSqlCollection(sourceDef, "add");
+            // P1-H: SQL collection add/remove/set must be rejected
+            checkNotSqlCollection(sourceDef, "add");
 
-        RelationDefinition rel = getRelation(sourceDef, req.association());
-        CollectionDefinition targetDef = runtimeService.get(rel.getTargetCollection());
-        checkNotSqlCollection(targetDef, "add");
+            RelationDefinition rel = getRelation(sourceDef, req.association());
+            CollectionDefinition targetDef = runtimeService.get(rel.getTargetCollection());
+            checkNotSqlCollection(targetDef, "add");
 
-        // P1-D2: Cross-datasource write must be rejected
-        checkNotCrossDatasource(sourceDef, targetDef, "add");
+            // P1-D2: Cross-datasource write must be rejected
+            checkNotCrossDatasource(sourceDef, targetDef, "add");
 
-        checkAcl(sourceDef.getName(), "update");
-        checkAcl(rel.getTargetCollection(), "update");
+            checkAcl(sourceDef.getName(), "update");
+            checkAcl(rel.getTargetCollection(), "update");
 
-        verifyInScope(sourceDef.getName(), sourceId);
-        verifyInScope(rel.getTargetCollection(), targetId);
+            verifyInScope(sourceDef.getName(), sourceId);
+            verifyInScope(rel.getTargetCollection(), targetId);
 
-        switch (rel.getType()) {
-            case "belongsToMany" -> addBelongsToMany(rel, sourceId, targetId);
-            case "hasMany" -> addHasMany(rel, sourceId, targetId);
-            default -> throw new IllegalArgumentException(
-                "add not supported for relation type: " + rel.getType());
+            switch (rel.getType()) {
+                case "belongsToMany" -> addBelongsToMany(rel, sourceId, targetId);
+                case "hasMany" -> addHasMany(rel, sourceId, targetId);
+                default -> throw new IllegalArgumentException(
+                    "add not supported for relation type: " + rel.getType());
+            }
+
+            auditLogService.auditSuccess("add", "association", resourceName,
+                    Map.of("sourceId", sourceId, "targetId", targetId));
+        } catch (Exception e) {
+            auditLogService.auditFailure("add", "association", resourceName,
+                    Map.of("error", e.getMessage() != null ? e.getMessage() : "Unknown error"));
+            throw e;
         }
     }
 
@@ -111,30 +124,39 @@ public class AssociationActionService {
 
     @Transactional
     public void remove(String resourceName, Object sourceId, Object targetId) {
-        AssociationRequest req = parse(resourceName);
-        CollectionDefinition sourceDef = runtimeService.get(req.source());
+        try {
+            AssociationRequest req = parse(resourceName);
+            CollectionDefinition sourceDef = runtimeService.get(req.source());
 
-        // P1-H: SQL collection add/remove/set must be rejected
-        checkNotSqlCollection(sourceDef, "remove");
+            // P1-H: SQL collection add/remove/set must be rejected
+            checkNotSqlCollection(sourceDef, "remove");
 
-        RelationDefinition rel = getRelation(sourceDef, req.association());
-        CollectionDefinition targetDef = runtimeService.get(rel.getTargetCollection());
-        checkNotSqlCollection(targetDef, "remove");
+            RelationDefinition rel = getRelation(sourceDef, req.association());
+            CollectionDefinition targetDef = runtimeService.get(rel.getTargetCollection());
+            checkNotSqlCollection(targetDef, "remove");
 
-        // P1-D2: Cross-datasource write must be rejected
-        checkNotCrossDatasource(sourceDef, targetDef, "remove");
+            // P1-D2: Cross-datasource write must be rejected
+            checkNotCrossDatasource(sourceDef, targetDef, "remove");
 
-        checkAcl(sourceDef.getName(), "update");
-        checkAcl(rel.getTargetCollection(), "update");
+            checkAcl(sourceDef.getName(), "update");
+            checkAcl(rel.getTargetCollection(), "update");
 
-        verifyInScope(sourceDef.getName(), sourceId);
-        verifyInScope(rel.getTargetCollection(), targetId);
+            verifyInScope(sourceDef.getName(), sourceId);
+            verifyInScope(rel.getTargetCollection(), targetId);
 
-        switch (rel.getType()) {
-            case "belongsToMany" -> removeBelongsToMany(rel, sourceId, targetId);
-            case "hasMany" -> removeHasMany(rel, sourceId, targetId);
-            default -> throw new IllegalArgumentException(
-                "remove not supported for relation type: " + rel.getType());
+            switch (rel.getType()) {
+                case "belongsToMany" -> removeBelongsToMany(rel, sourceId, targetId);
+                case "hasMany" -> removeHasMany(rel, sourceId, targetId);
+                default -> throw new IllegalArgumentException(
+                    "remove not supported for relation type: " + rel.getType());
+            }
+
+            auditLogService.auditSuccess("remove", "association", resourceName,
+                    Map.of("sourceId", sourceId, "targetId", targetId));
+        } catch (Exception e) {
+            auditLogService.auditFailure("remove", "association", resourceName,
+                    Map.of("error", e.getMessage() != null ? e.getMessage() : "Unknown error"));
+            throw e;
         }
     }
 
@@ -142,31 +164,40 @@ public class AssociationActionService {
 
     @Transactional
     public void set(String resourceName, Object sourceId, List<Object> targetIds) {
-        AssociationRequest req = parse(resourceName);
-        CollectionDefinition sourceDef = runtimeService.get(req.source());
+        try {
+            AssociationRequest req = parse(resourceName);
+            CollectionDefinition sourceDef = runtimeService.get(req.source());
 
-        // P1-H: SQL collection add/remove/set must be rejected
-        checkNotSqlCollection(sourceDef, "set");
+            // P1-H: SQL collection add/remove/set must be rejected
+            checkNotSqlCollection(sourceDef, "set");
 
-        RelationDefinition rel = getRelation(sourceDef, req.association());
-        CollectionDefinition targetDef = runtimeService.get(rel.getTargetCollection());
-        checkNotSqlCollection(targetDef, "set");
+            RelationDefinition rel = getRelation(sourceDef, req.association());
+            CollectionDefinition targetDef = runtimeService.get(rel.getTargetCollection());
+            checkNotSqlCollection(targetDef, "set");
 
-        // P1-D2: Cross-datasource write must be rejected
-        checkNotCrossDatasource(sourceDef, targetDef, "set");
+            // P1-D2: Cross-datasource write must be rejected
+            checkNotCrossDatasource(sourceDef, targetDef, "set");
 
-        checkAcl(sourceDef.getName(), "update");
-        checkAcl(rel.getTargetCollection(), "update");
+            checkAcl(sourceDef.getName(), "update");
+            checkAcl(rel.getTargetCollection(), "update");
 
-        verifyInScope(sourceDef.getName(), sourceId);
+            verifyInScope(sourceDef.getName(), sourceId);
 
-        switch (rel.getType()) {
-            case "belongsToMany" -> setBelongsToMany(rel, sourceId, targetIds);
-            case "hasMany" -> setHasMany(rel, sourceId, targetIds);
-            case "belongsTo" -> setBelongsTo(rel, sourceDef, sourceId,
-                    targetIds != null && !targetIds.isEmpty() ? targetIds.get(0) : null);
-            default -> throw new IllegalArgumentException(
-                "set not supported for relation type: " + rel.getType());
+            switch (rel.getType()) {
+                case "belongsToMany" -> setBelongsToMany(rel, sourceId, targetIds);
+                case "hasMany" -> setHasMany(rel, sourceId, targetIds);
+                case "belongsTo" -> setBelongsTo(rel, sourceDef, sourceId,
+                        targetIds != null && !targetIds.isEmpty() ? targetIds.get(0) : null);
+                default -> throw new IllegalArgumentException(
+                    "set not supported for relation type: " + rel.getType());
+            }
+
+            auditLogService.auditSuccess("set", "association", resourceName,
+                    Map.of("sourceId", sourceId, "targetCount", targetIds != null ? targetIds.size() : 0));
+        } catch (Exception e) {
+            auditLogService.auditFailure("set", "association", resourceName,
+                    Map.of("error", e.getMessage() != null ? e.getMessage() : "Unknown error"));
+            throw e;
         }
     }
 
@@ -301,13 +332,13 @@ public class AssociationActionService {
 
     /**
      * P1-H: Reject association add/remove/set on SQL collections.
-     * SQL collections are read-only — writes are forbidden.
+     * SQL collections are read-only -- writes are forbidden.
      */
     private void checkNotSqlCollection(CollectionDefinition def, String action) {
         if (def.isSql()) {
             throw new ForbiddenException(
                     "Cannot " + action + " associations on SQL collection '" + def.getName() + "'"
-                            + " — SQL collections are read-only");
+                            + " -- SQL collections are read-only");
         }
     }
 

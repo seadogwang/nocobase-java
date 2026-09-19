@@ -7,15 +7,15 @@ import java.util.Map;
  *
  * <p>Parses the following options:
  * <ul>
- *   <li>{@code nullable} — boolean</li>
- *   <li>{@code default} — string (default value expression)</li>
- *   <li>{@code length} — integer (for string/text types)</li>
- *   <li>{@code precision} — integer (for decimal/numeric types)</li>
- *   <li>{@code scale} — integer (for decimal/numeric types)</li>
+ *   <li>{@code nullable} -- boolean</li>
+ *   <li>{@code default} -- string (default value expression)</li>
+ *   <li>{@code length} -- integer (for string/text types)</li>
+ *   <li>{@code precision} -- integer (for decimal/numeric types)</li>
+ *   <li>{@code scale} -- integer (for decimal/numeric types)</li>
  * </ul>
  *
  * <p>Illegal option values (wrong type, negative integers, etc.) result in
- * {@link IllegalArgumentException} — the parser is fail-fast, never producing
+ * {@link IllegalArgumentException} -- the parser is fail-fast, never producing
  * half-baked DDL.
  */
 public final class FieldOptionsParser {

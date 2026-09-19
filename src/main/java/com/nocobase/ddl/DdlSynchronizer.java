@@ -60,7 +60,7 @@ public class DdlSynchronizer {
         collection.setUpdatedAtTime(LocalDateTime.now());
         CollectionEntity saved = collectionRepository.save(collection);
 
-        // Skip DDL for view/sql collections — they don't create physical tables
+        // Skip DDL for view/sql collections -- they don't create physical tables
         if (!isViewOrSql(collection)) {
             DdlPlan plan = buildCreateTablePlan(collection, fields);
             executePlan(plan);
@@ -213,7 +213,7 @@ public class DdlSynchronizer {
 
     /**
      * Parse field options from the field's JSON options string.
-     * Fails fast on invalid options — never produces half-baked DDL.
+     * Fails fast on invalid options -- never produces half-baked DDL.
      *
      * @param field the field entity
      * @return parsed FieldOptions (never null)
@@ -269,7 +269,7 @@ public class DdlSynchronizer {
 
         if (isViewOrSql(collection)) {
             plans.add(new SchemaPlan(SchemaPlan.Action.NO_OP, collection.getName(),
-                    "View/sql collection — no physical DDL", false));
+                    "View/sql collection -- no physical DDL", false));
             return plans;
         }
 

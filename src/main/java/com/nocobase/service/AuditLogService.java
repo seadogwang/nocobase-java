@@ -72,15 +72,16 @@ public class AuditLogService {
      */
     @Transactional(propagation = Propagation.REQUIRED)
     public void auditSuccess(String action, String resource, String resourceKey, Map<String, Object> details) {
+        String safeKey = sanitizeResourceKey(resourceKey);
         try {
-            AuditLog entry = buildAuditLog(action, resource, resourceKey, details, "success");
+            AuditLog entry = buildAuditLog(action, resource, safeKey, details, "success");
             auditLogRepository.save(entry);
-            log.debug("Audit: {} {} {} - success", action, resource, resourceKey);
+            log.debug("Audit: {} {} {} - success", action, resource, safeKey);
         } catch (Exception e) {
             log.error("Failed to write audit log for {} {} {}: {}",
-                    action, resource, resourceKey, sanitizeExceptionMessage(e));
+                    action, resource, safeKey, sanitizeExceptionMessage(e));
             throw new AuditLogWriteException(
-                    "Audit log write failed for " + action + " " + resource + "/" + resourceKey, e);
+                    "Audit log write failed for " + action + " " + resource + "/" + safeKey, e);
         }
     }
 
@@ -88,7 +89,7 @@ public class AuditLogService {
      * Record a failed audit event.
      * Uses REQUIRED propagation; the caller's transaction still commits (the
      * business operation already failed), but we record the attempt.
-     * If this write also fails, we log and swallow — we don't want to compound
+     * If this write also fails, we log and swallow -- we don't want to compound
      * the original error.
      *
      * @param action      the action attempted
@@ -98,13 +99,14 @@ public class AuditLogService {
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void auditFailure(String action, String resource, String resourceKey, Map<String, Object> details) {
+        String safeKey = sanitizeResourceKey(resourceKey);
         try {
-            AuditLog entry = buildAuditLog(action, resource, resourceKey, details, "failure");
+            AuditLog entry = buildAuditLog(action, resource, safeKey, details, "failure");
             auditLogRepository.save(entry);
-            log.debug("Audit: {} {} {} - failure", action, resource, resourceKey);
+            log.debug("Audit: {} {} {} - failure", action, resource, safeKey);
         } catch (Exception e) {
             log.error("Failed to write failure audit log for {} {} {}: {}",
-                    action, resource, resourceKey, sanitizeExceptionMessage(e));
+                    action, resource, safeKey, sanitizeExceptionMessage(e));
             // Swallow: we don't want to compound the original error
         }
     }
@@ -296,6 +298,8 @@ public class AuditLogService {
         result = result.replaceAll("[A-Za-z0-9_\\-]{40,}", "[TOKEN_REDACTED]");
         // Strip password= patterns
         result = result.replaceAll("(?i)password\\s*[=:]\\s*[^\\s,;}\"]*", "password=[REDACTED]");
+        // Strip user= patterns (username is a credential)
+        result = result.replaceAll("(?i)user\\s*[=:]\\s*[^\\s,;}\"]*", "user=[REDACTED]");
         // Strip secret= patterns
         result = result.replaceAll("(?i)secret\\s*[=:]\\s*[^\\s,;}\"]*", "secret=[REDACTED]");
         // Strip Bearer token patterns
@@ -312,6 +316,28 @@ public class AuditLogService {
         String msg = e.getMessage();
         if (msg == null) return "null";
         return sanitizeStringValue(msg);
+    }
+
+    /**
+     * Sanitize a resource key before it is logged, persisted, or returned.
+     * <p>Stable identifiers (collection names, data-source keys, the literal
+     * {@code "connection-test"}) pass through unchanged so audit records stay
+     * useful. A value that looks like a JDBC URL or contains credential
+     * patterns ({@code user=}, {@code password=}, {@code secret=},
+     * {@code ://}) is scrubbed so the raw URL and credentials never reach
+     * application logs, the audit row, or the query API.
+     */
+    String sanitizeResourceKey(String resourceKey) {
+        if (resourceKey == null || resourceKey.isBlank()) {
+            return resourceKey;
+        }
+        String lower = resourceKey.toLowerCase();
+        boolean looksSensitive = resourceKey.contains("jdbc:")
+                || resourceKey.contains("://")
+                || lower.contains("user=")
+                || lower.contains("password=")
+                || lower.contains("secret=");
+        return looksSensitive ? sanitizeStringValue(resourceKey) : resourceKey;
     }
 
     /**

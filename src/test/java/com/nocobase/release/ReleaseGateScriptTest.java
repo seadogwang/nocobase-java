@@ -101,4 +101,43 @@ class ReleaseGateScriptTest {
         assertTrue(scriptContent.contains("MavenArgs"),
                 "Release script must use -MavenArgs (explicit parameter) for Maven command building");
     }
+
+    @Test
+    @DisplayName("External PG mode checks each credential independently (partial config fails)")
+    void externalPgModeChecksEachCredential() {
+        // In -RequireExternalPg mode the script must check PG_URL, PG_USERNAME,
+        // and PG_PASSWORD independently and fail Gate 3 if ANY is missing
+        // (partial configuration must not silently fall back).
+        int reqIdx = scriptContent.indexOf("RequireExternalPg");
+        assertTrue(reqIdx >= 0, "script must define -RequireExternalPg");
+        // All three credential checks must appear after the RequireExternalPg branch.
+        for (String v : new String[]{"PG_URL", "PG_USERNAME", "PG_PASSWORD"}) {
+            int idx = scriptContent.indexOf(v, reqIdx);
+            assertTrue(idx > reqIdx,
+                    "script must check " + v + " inside the -RequireExternalPg branch");
+        }
+        // A missing credential must force a non-zero Gate 3 outcome.
+        assertTrue(scriptContent.contains("pgEnvMissing"),
+                "script must collect missing PG credentials into a list for partial-config reporting");
+    }
+
+    @Test
+    @DisplayName("postgresql-acceptance profile does not silently exclude the PG acceptance test")
+    void postgresqlAcceptanceProfileIncludesPgTest() throws Exception {
+        // The pom profile must include PostgreSqlIntegrationTest (not silently
+        // exclude all acceptance tests). Read pom.xml from the project root.
+        java.nio.file.Path pomPath = java.nio.file.Path.of("pom.xml");
+        assertTrue(java.nio.file.Files.isRegularFile(pomPath), "pom.xml must exist");
+        String pom = java.nio.file.Files.readString(pomPath);
+
+        int profileIdx = pom.indexOf("postgresql-acceptance");
+        assertTrue(profileIdx >= 0, "pom must define the postgresql-acceptance profile");
+        // The profile's surefire <includes> must reference PostgreSqlIntegrationTest.
+        String profileBlock = pom.substring(profileIdx);
+        assertTrue(profileBlock.contains("PostgreSqlIntegrationTest"),
+                "postgresql-acceptance profile must include PostgreSqlIntegrationTest");
+        assertTrue(profileBlock.contains("<exclude>NONE</exclude>")
+                        || profileBlock.contains("<excludes><exclude>NONE</exclude>"),
+                "postgresql-acceptance profile must override the global PG exclude so the test runs");
+    }
 }

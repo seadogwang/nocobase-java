@@ -83,24 +83,30 @@ public class CollectionMetadataService {
         ReentrantLock lock = collectionLocks.computeIfAbsent(collectionName, k -> new ReentrantLock());
         lock.lock();
         try {
-            // Double-check: the collection might have been created by another thread
-            // while we were waiting for the lock
-            if (runtimeService.exists(collectionName)) {
-                throw new IllegalStateException("Collection already exists: " + collectionName);
+            try {
+                // Double-check: the collection might have been created by another thread
+                // while we were waiting for the lock
+                if (runtimeService.exists(collectionName)) {
+                    throw new IllegalStateException("Collection already exists: " + collectionName);
+                }
+
+                // Step 1: Execute DDL (DDL is auto-committed in most DBs)
+                // If DDL fails, metadata won't be saved (transaction rolls back the metadata save)
+                CollectionEntity saved = ddlSynchronizer.createCollection(collection, fields);
+
+                // Step 2: Refresh runtime registry (only after DDL succeeds)
+                runtimeService.reload(collectionName);
+
+                log.info("Collection created: {}", collectionName);
+                auditLogService.auditSuccess("create", "collection", collectionName,
+                        Map.of("name", collectionName, "type", collection.getType(),
+                                "title", collection.getTitle() != null ? collection.getTitle() : ""));
+                return saved;
+            } catch (Exception e) {
+                auditLogService.auditFailure("create", "collection", collectionName,
+                        Map.of("error", e.getMessage() != null ? e.getMessage() : "Unknown error"));
+                throw e;
             }
-
-            // Step 1: Execute DDL (DDL is auto-committed in most DBs)
-            // If DDL fails, metadata won't be saved (transaction rolls back the metadata save)
-            CollectionEntity saved = ddlSynchronizer.createCollection(collection, fields);
-
-            // Step 2: Refresh runtime registry (only after DDL succeeds)
-            runtimeService.reload(collectionName);
-
-            log.info("Collection created: {}", collectionName);
-            auditLogService.auditSuccess("create", "collection", collectionName,
-                    Map.of("name", collectionName, "type", collection.getType(),
-                            "title", collection.getTitle() != null ? collection.getTitle() : ""));
-            return saved;
         } finally {
             lock.unlock();
             // Clean up the lock if no one else is waiting on it
@@ -120,23 +126,29 @@ public class CollectionMetadataService {
     public void deleteCollection(String collectionName) {
         log.info("Deleting collection: {}", collectionName);
 
-        // Check capability
-        var def = runtimeService.get(collectionName);
-        if (def.isSystem()) {
-            throw new ForbiddenException("Cannot delete system collection: " + collectionName);
-        }
-
         ReentrantLock lock = collectionLocks.computeIfAbsent(collectionName, k -> new ReentrantLock());
         lock.lock();
         try {
-            // Step 1: Execute DDL to drop the table
-            ddlSynchronizer.dropCollection(collectionName);
+            try {
+                // Check capability
+                var def = runtimeService.get(collectionName);
+                if (def.isSystem()) {
+                    throw new ForbiddenException("Cannot delete system collection: " + collectionName);
+                }
 
-            // Step 2: Refresh runtime registry (only after DDL succeeds)
-            runtimeService.reload(collectionName);
+                // Step 1: Execute DDL to drop the table
+                ddlSynchronizer.dropCollection(collectionName);
 
-            log.info("Collection deleted: {}", collectionName);
-            auditLogService.auditSuccess("destroy", "collection", collectionName, Map.of());
+                // Step 2: Refresh runtime registry (only after DDL succeeds)
+                runtimeService.reload(collectionName);
+
+                log.info("Collection deleted: {}", collectionName);
+                auditLogService.auditSuccess("destroy", "collection", collectionName, Map.of());
+            } catch (Exception e) {
+                auditLogService.auditFailure("destroy", "collection", collectionName,
+                        Map.of("error", e.getMessage() != null ? e.getMessage() : "Unknown error"));
+                throw e;
+            }
         } finally {
             lock.unlock();
             if (!lock.hasQueuedThreads() && !lock.isLocked()) {
@@ -158,34 +170,41 @@ public class CollectionMetadataService {
         String fieldName = field.getName();
         log.info("Adding field {}.{}", collectionName, fieldName);
 
-        // Check capability
-        var def = runtimeService.get(collectionName);
-        var capability = CollectionCapability.forType(def.getType());
-        if (!capability.isSchemaMutable()) {
-            throw new ForbiddenException(
-                "Cannot modify schema of " + def.getType() + " collection: " + collectionName);
-        }
-
         ReentrantLock lock = collectionLocks.computeIfAbsent(collectionName, k -> new ReentrantLock());
         lock.lock();
         try {
-            // Double-check: field might have been added by another thread
-            if (def.getFields().containsKey(fieldName)) {
-                throw new IllegalStateException(
-                        "Field '" + fieldName + "' already exists in collection '" + collectionName + "'");
+            try {
+                // Check capability
+                var def = runtimeService.get(collectionName);
+                var capability = CollectionCapability.forType(def.getType());
+                if (!capability.isSchemaMutable()) {
+                    throw new ForbiddenException(
+                        "Cannot modify schema of " + def.getType() + " collection: " + collectionName);
+                }
+
+                // Double-check: field might have been added by another thread
+                if (def.getFields().containsKey(fieldName)) {
+                    throw new IllegalStateException(
+                            "Field '" + fieldName + "' already exists in collection '" + collectionName + "'");
+                }
+
+                // Step 1: Execute DDL to add the column
+                FieldEntity saved = ddlSynchronizer.addField(field);
+
+                // Step 2: Refresh runtime registry (only after DDL succeeds)
+                runtimeService.reload(collectionName);
+
+                log.info("Field added: {}.{}", collectionName, fieldName);
+                auditLogService.auditSuccess("create", "field", collectionName + "." + fieldName,
+                        Map.of("collectionName", collectionName, "fieldName", fieldName,
+                                "fieldType", field.getType()));
+                return saved;
+            } catch (Exception e) {
+                auditLogService.auditFailure("create", "field", collectionName + "." + fieldName,
+                        Map.of("collectionName", collectionName, "fieldName", fieldName,
+                                "error", e.getMessage() != null ? e.getMessage() : "Unknown error"));
+                throw e;
             }
-
-            // Step 1: Execute DDL to add the column
-            FieldEntity saved = ddlSynchronizer.addField(field);
-
-            // Step 2: Refresh runtime registry (only after DDL succeeds)
-            runtimeService.reload(collectionName);
-
-            log.info("Field added: {}.{}", collectionName, fieldName);
-            auditLogService.auditSuccess("create", "field", collectionName + "." + fieldName,
-                    Map.of("collectionName", collectionName, "fieldName", fieldName,
-                            "fieldType", field.getType()));
-            return saved;
         } finally {
             lock.unlock();
             if (!lock.hasQueuedThreads() && !lock.isLocked()) {
@@ -205,30 +224,37 @@ public class CollectionMetadataService {
     public void dropField(String collectionName, String fieldName) {
         log.info("Dropping field {}.{}", collectionName, fieldName);
 
-        var def = runtimeService.get(collectionName);
-        var capability = CollectionCapability.forType(def.getType());
-        if (!capability.isSchemaMutable()) {
-            throw new ForbiddenException(
-                "Cannot modify schema of " + def.getType() + " collection: " + collectionName);
-        }
-
         ReentrantLock lock = collectionLocks.computeIfAbsent(collectionName, k -> new ReentrantLock());
         lock.lock();
         try {
-            // Double-check: field might have been dropped by another thread
-            if (!def.getFields().containsKey(fieldName)) {
-                throw new ResourceNotFoundException("Field", collectionName + "." + fieldName);
+            try {
+                var def = runtimeService.get(collectionName);
+                var capability = CollectionCapability.forType(def.getType());
+                if (!capability.isSchemaMutable()) {
+                    throw new ForbiddenException(
+                        "Cannot modify schema of " + def.getType() + " collection: " + collectionName);
+                }
+
+                // Double-check: field might have been dropped by another thread
+                if (!def.getFields().containsKey(fieldName)) {
+                    throw new ResourceNotFoundException("Field", collectionName + "." + fieldName);
+                }
+
+                // Step 1: Execute DDL to drop the column
+                ddlSynchronizer.dropField(collectionName, fieldName);
+
+                // Step 2: Refresh runtime registry (only after DDL succeeds)
+                runtimeService.reload(collectionName);
+
+                log.info("Field dropped: {}.{}", collectionName, fieldName);
+                auditLogService.auditSuccess("destroy", "field", collectionName + "." + fieldName,
+                        Map.of("collectionName", collectionName, "fieldName", fieldName));
+            } catch (Exception e) {
+                auditLogService.auditFailure("destroy", "field", collectionName + "." + fieldName,
+                        Map.of("collectionName", collectionName, "fieldName", fieldName,
+                                "error", e.getMessage() != null ? e.getMessage() : "Unknown error"));
+                throw e;
             }
-
-            // Step 1: Execute DDL to drop the column
-            ddlSynchronizer.dropField(collectionName, fieldName);
-
-            // Step 2: Refresh runtime registry (only after DDL succeeds)
-            runtimeService.reload(collectionName);
-
-            log.info("Field dropped: {}.{}", collectionName, fieldName);
-            auditLogService.auditSuccess("destroy", "field", collectionName + "." + fieldName,
-                    Map.of("collectionName", collectionName, "fieldName", fieldName));
         } finally {
             lock.unlock();
             if (!lock.hasQueuedThreads() && !lock.isLocked()) {

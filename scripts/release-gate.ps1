@@ -11,15 +11,21 @@ param(
 )
 
 $ErrorActionPreference = "Continue"
-$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$ProjectRoot = Resolve-Path "$ScriptDir\.."
+# $PSScriptRoot is reliably populated on PowerShell 5.1 and 7+ when the
+# script is invoked via -File; fall back to $MyInvocation for completeness.
+$ScriptDir = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path -Parent $MyInvocation.MyCommand.Path }
+$ProjectRoot = Resolve-Path (Join-Path $ScriptDir "..")
 
-# Cross-platform paths (use Join-Path for Windows/Unix compatibility)
-$ReportsDir = Join-Path $ProjectRoot "target" "surefire-reports"
+# Cross-platform paths. PowerShell 5.1's Join-Path accepts only two path
+# parts, so multi-segment paths are nested (works on 5.1 and 7+).
+$ReportsDir = Join-Path (Join-Path $ProjectRoot "target") "surefire-reports"
 $SrcDir = Join-Path $ProjectRoot "src"
-$ClassesDir = Join-Path $ProjectRoot "target" "classes"
+$ClassesDir = Join-Path (Join-Path $ProjectRoot "target") "classes"
 $PgReportFile = Join-Path $ReportsDir "TEST-com.nocobase.postgresql.PostgreSqlIntegrationTest.xml"
 $ReportFilePath = Join-Path $ProjectRoot $ReportPath
+
+# PostgreSQL mode: updated to "External PostgreSQL" when -RequireExternalPg runs.
+$pgMode = "Testcontainers"
 
 # Force ASCII-safe output encoding for cross-platform compatibility
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
@@ -446,12 +452,16 @@ elseif ($SkipPgAcceptance) {
 }
 else {
     if ($RequireExternalPg) {
+        $pgMode = "External PostgreSQL"
         Write-Host "  Running with external PostgreSQL (Testcontainers disabled)" -ForegroundColor Yellow
-        Write-Host "  PG_URL: $pgUrl" -ForegroundColor Gray
-        Write-Host "  PG_USERNAME: $pgUsername" -ForegroundColor Gray
-        Write-Host "  PG_PASSWORD: ****" -ForegroundColor Gray
+        # Never print the raw PG_URL/username/password values — only whether
+        # each is configured. Connection data must not leak to logs or reports.
+        Write-Host "  PG_URL: (redacted; $(if ($pgUrl) { 'configured' } else { 'missing' }))" -ForegroundColor Gray
+        Write-Host "  PG_USERNAME: (redacted; $(if ($pgUsername) { 'configured' } else { 'missing' }))" -ForegroundColor Gray
+        Write-Host "  PG_PASSWORD: (redacted; $(if ($pgPassword) { 'configured' } else { 'missing' }))" -ForegroundColor Gray
     }
     else {
+        $pgMode = "Testcontainers"
         Write-Host "  Running with Testcontainers (auto-start PostgreSQL container)" -ForegroundColor Green
     }
 
@@ -679,6 +689,7 @@ $reportContent = @"
 **Generated:** $(Get-Date -Format 'yyyy-MM-ddTHH:mm:sszzz')
 **Project:** nocobase-java (NocoBase Java Backend)
 **Branch/Commit:** $(try { git -C $ProjectRoot rev-parse --short HEAD 2>$null } catch { "N/A" })
+**PostgreSQL mode:** $pgMode (no JDBC URL or credentials recorded)
 
 ## Gate Summary
 
@@ -813,6 +824,26 @@ Any FAIL is a **BLOCKER** for the release.
 # Write the report with UTF-8 encoding (no BOM for cross-platform compatibility)
 $reportContent | Out-File -FilePath $ReportFilePath -Encoding utf8 -Force
 Write-Host "Report written to $ReportFilePath" -ForegroundColor Green
+
+# -- ReleaseGateVerifier verify-report: cross-check the report against HEAD --
+# Fail the overall gate if the report is stale/placeholder/inconsistent with
+# the actual surefire XML or the current git commit.
+$reportVerifierExitCode = 0
+if ($gate3PgReportExists) {
+    Write-Host "-- [ReleaseGateVerifier: verify-report consistency] --" -ForegroundColor Yellow
+    $reportVerifyOutput = & java -cp $ClassesDir com.nocobase.release.ReleaseGateVerifier verify-report `
+        --report $ReportFilePath --reports-dir $ReportsDir 2>&1
+    $reportVerifyOutput | ForEach-Object { Write-Host "  $_" }
+    $reportVerifierExitCode = $LASTEXITCODE
+    if ($reportVerifierExitCode -ne 0) {
+        Write-Host "  Report consistency check: FAIL (exit $reportVerifierExitCode)" -ForegroundColor Red
+        $overallPassed = $false
+    } else {
+        Write-Host "  Report consistency check: PASS" -ForegroundColor Green
+    }
+} else {
+    Write-Host "  Report consistency check: SKIPPED (no PG report file to cross-check)" -ForegroundColor Yellow
+}
 
 # -- Exit Code -----------------------------------------------------------------
 

@@ -366,20 +366,22 @@ public class DataSourceConfigService {
                         "message", valid ? "Connection successful" : "Connection validation failed"
                 );
             } catch (SQLException e) {
-                String sanitized = SqlErrorSanitizer.sanitizeForLog(e.getMessage());
+                String category = categorizeConnectionError(e);
                 String sanitizedUrl = sanitizeUrlForResponse(url != null ? url : "unknown");
-                log.warn("Connection test failed: {}", sanitized);
+                log.warn("Connection test failed for {}: {}", sanitizedUrl, category);
                 auditLogService.auditFailure("testConnection", "dataSource", sanitizedUrl,
-                        Map.of("success", false, "error", sanitized));
+                        Map.of("success", false, "error", category));
                 return Map.of(
                         "success", false,
-                        "message", "Connection failed: " + sanitized
+                        "message", "Connection failed: " + category
                 );
             }
         } catch (Exception e) {
-            String url = (String) body.get("url");
-            auditLogService.auditFailure("testConnection", "dataSource", url != null ? url : "unknown",
-                    Map.of("error", e.getMessage() != null ? e.getMessage() : "Unknown error"));
+            String rawUrl = (String) body.get("url");
+            String sanitizedUrl = sanitizeUrlForResponse(rawUrl != null ? rawUrl : "unknown");
+            String category = categorizeConnectionError(e);
+            auditLogService.auditFailure("testConnection", "dataSource", sanitizedUrl,
+                    Map.of("error", category));
             throw e;
         }
     }
@@ -468,6 +470,59 @@ public class DataSourceConfigService {
                 }
             }
         }
+    }
+
+    /**
+     * Map a connection-test exception to a safe, stable category string for
+     * audit details, application logs, and API responses.
+     *
+     * <p>The raw exception message from a JDBC driver may contain hostnames,
+     * ports, or quoted usernames (e.g. PostgreSQL's
+     * {@code FATAL: password authentication failed for user "admin"}). It must
+     * never be persisted, logged, or returned to the client. This method
+     * inspects keywords only to pick a bucket and returns the bucket string.
+     *
+     * <p>Categories: {@code invalid-url}, {@code missing-url},
+     * {@code unsupported-driver}, {@code invalid-dialect},
+     * {@code connection-refused}, {@code unknown-host}, {@code auth-failed},
+     * {@code connection-error} (fallback).
+     */
+    private String categorizeConnectionError(Exception e) {
+        if (e == null || e.getMessage() == null) {
+            return "connection-error";
+        }
+        String msg = e.getMessage().toLowerCase();
+        if (e instanceof IllegalArgumentException) {
+            if (msg.contains("'url' is required")) {
+                return "missing-url";
+            }
+            if (msg.contains("must start with") || msg.contains("forbidden parameter")) {
+                return "invalid-url";
+            }
+            if (msg.contains("driver class name must be")
+                    || msg.contains("driver not supported")
+                    || msg.contains("jdbc driver class not found")) {
+                return "unsupported-driver";
+            }
+            if (msg.contains("dialect must be")) {
+                return "invalid-dialect";
+            }
+        }
+        if (msg.contains("no suitable driver")) {
+            return "unsupported-driver";
+        }
+        if (msg.contains("unknown host") || msg.contains("unknownhostexception")) {
+            return "unknown-host";
+        }
+        if (msg.contains("connection refused") || msg.contains("connection timed out")
+                || msg.contains("connect failed") || msg.contains("connection error")) {
+            return "connection-refused";
+        }
+        if (msg.contains("authentication") || msg.contains("password")
+                || msg.contains("fatal") || msg.contains("denied")) {
+            return "auth-failed";
+        }
+        return "connection-error";
     }
 
     private DataSourceConfigEntity buildEntity(String dsKey, Map<String, Object> body) {

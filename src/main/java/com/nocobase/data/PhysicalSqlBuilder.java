@@ -14,7 +14,7 @@ import java.util.Map;
  * All values are bound as {@code ?} placeholders. Pagination uses the dialect's
  * {@link SqlDialect#getLimitOffsetClause()}.
  *
- * <p>This builder produces {@link SqlPlan} objects — it never executes SQL.
+ * <p>This builder produces {@link SqlPlan} objects -- it never executes SQL.
  * Callers use {@link org.springframework.jdbc.core.JdbcTemplate} to execute
  * the plan's SQL with its parameters.
  */
@@ -26,7 +26,7 @@ public class PhysicalSqlBuilder {
         this.dialect = dialect;
     }
 
-    // ── identifier helpers ────────────────────────────────────────────────
+    // -- identifier helpers ------------------------------------------------
 
     private String quote(String identifier) {
         return dialect.quoteIdentifier(identifier);
@@ -36,7 +36,7 @@ public class PhysicalSqlBuilder {
         return quote(def.getTableName());
     }
 
-    // ── plan builders ─────────────────────────────────────────────────────
+    // -- plan builders -----------------------------------------------------
 
     /**
      * Build a SELECT plan with pagination and a companion COUNT plan.
@@ -73,7 +73,7 @@ public class PhysicalSqlBuilder {
         sqlParams.add(pageSize);
         sqlParams.add(offset);
 
-        // Count SQL — same WHERE, no ORDER BY / pagination
+        // Count SQL -- same WHERE, no ORDER BY / pagination
         StringBuilder countSql = new StringBuilder("SELECT COUNT(*) FROM ").append(tbl);
         List<Object> countParams = new ArrayList<>();
         if (whereClause != null && !whereClause.isEmpty()) {
@@ -85,7 +85,7 @@ public class PhysicalSqlBuilder {
     }
 
     /**
-     * Build a SELECT plan without LIMIT/OFFSET — returns ALL matching rows.
+     * Build a SELECT plan without LIMIT/OFFSET -- returns ALL matching rows.
      * Used by {@link DynamicRepository#listLinks} for through-table queries
      * that must return all links for a given set of source IDs.
      *

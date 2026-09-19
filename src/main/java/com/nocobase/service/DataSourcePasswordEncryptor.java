@@ -38,7 +38,7 @@ public class DataSourcePasswordEncryptor {
     private static final int GCM_TAG_LENGTH = 128; // bits
     private static final int AES_KEY_LENGTH = 32; // 256 bits
 
-    /** Prefix marking an encrypted value — everything else is treated as plaintext. */
+    /** Prefix marking an encrypted value -- everything else is treated as plaintext. */
     static final String ENCRYPTION_PREFIX = "{AES-GCM}";
 
     private static final String[] KNOWN_DEV_MASTER_KEYS = {
@@ -56,7 +56,7 @@ public class DataSourcePasswordEncryptor {
 
         if (masterKey == null || masterKey.isBlank()) {
             if (isTestProfile(environment)) {
-                log.warn("No master key configured — using ephemeral test key. "
+                log.warn("No master key configured -- using ephemeral test key. "
                         + "Encrypted passwords will NOT survive a restart.");
                 // 32-byte hard-coded key for tests only
                 byte[] testKey = "test-key-for-AES-256-GCM-mode!!".getBytes(StandardCharsets.UTF_8);
@@ -100,7 +100,7 @@ public class DataSourcePasswordEncryptor {
         log.info("DataSource password encryption initialized with AES-256-GCM");
     }
 
-    // ── public API ──────────────────────────────────────────────────────
+    // -- public API ------------------------------------------------------
 
     /**
      * Encrypt a plaintext password. Returns the input unchanged if it is null,
@@ -142,7 +142,7 @@ public class DataSourcePasswordEncryptor {
             return ciphertext;
         }
         if (!isEncrypted(ciphertext)) {
-            return ciphertext; // plaintext / legacy — return as-is
+            return ciphertext; // plaintext / legacy -- return as-is
         }
         try {
             String stripped = ciphertext.substring(ENCRYPTION_PREFIX.length());
@@ -167,7 +167,7 @@ public class DataSourcePasswordEncryptor {
         return value != null && value.startsWith(ENCRYPTION_PREFIX);
     }
 
-    // ── private helpers ─────────────────────────────────────────────────
+    // -- private helpers -------------------------------------------------
 
     private static boolean isTestProfile(Environment environment) {
         return Arrays.asList(environment.getActiveProfiles()).contains("test");

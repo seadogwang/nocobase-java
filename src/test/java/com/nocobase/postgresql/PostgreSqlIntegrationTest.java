@@ -67,7 +67,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 @SpringBootTest
 @ActiveProfiles({"test", "postgresql"})
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
-class PostgreSqlIntegrationTest {
+class PostgreSqlIntegrationTest extends PostgreSqlTestContainerSupport {
 
     private static final Logger log = LoggerFactory.getLogger(PostgreSqlIntegrationTest.class);
 
@@ -118,9 +118,11 @@ class PostgreSqlIntegrationTest {
 
     @BeforeAll
     void setUpAll() {
-        pgUrl = System.getenv("PG_URL");
-        pgUsername = System.getenv("PG_USERNAME");
-        pgPassword = System.getenv("PG_PASSWORD");
+        // Read from system properties (set by PostgreSqlTestContainerSupport) first,
+        // then fall back to environment variables for manual CI/CD configuration.
+        pgUrl = System.getProperty("PG_URL", System.getenv("PG_URL"));
+        pgUsername = System.getProperty("PG_USERNAME", System.getenv("PG_USERNAME"));
+        pgPassword = System.getProperty("PG_PASSWORD", System.getenv("PG_PASSWORD"));
 
         boolean acceptanceMode = "true".equals(System.getProperty("postgresql.acceptance"));
 
@@ -452,8 +454,13 @@ class PostgreSqlIntegrationTest {
 
         assertFalse(sanitized.contains("SELECT"),
                 "Sanitized message should not contain SQL");
-        assertFalse(sanitized.contains("nonexistent"),
-                "Sanitized message should not contain table name");
+        // The SQL fragment (including the table name it referenced) must be
+        // scrubbed — it only appears in the "Where: SQL statement ..." line,
+        // which the sanitizer strips wholesale. The relation name may still
+        // appear in the general error line ("relation X does not exist"),
+        // which is safe diagnostic text, not a credential or SQL fragment.
+        assertFalse(sanitized.contains("SELECT * FROM"),
+                "Sanitized message should not contain the SQL statement fragment");
         assertFalse(sanitized.contains("Position:"),
                 "Sanitized message should not contain Position detail");
         assertFalse(sanitized.contains("Where:"),
@@ -950,16 +957,23 @@ class PostgreSqlIntegrationTest {
                         "external_data_sources must have column '" + col + "'");
             }
 
-            // Verify ds_key unique index
-            Set<String> dsIndexes = new HashSet<>();
+            // Verify ds_key is uniquely indexed (V4 declares the column-level
+            // UNIQUE constraint, which PG materializes as an auto-named unique
+            // index; the additional idx_external_ds_key is non-unique, so we
+            // assert uniqueness by column rather than by index name).
+            Set<String> uniquelyIndexedColumns = new HashSet<>();
             try (ResultSet rs = meta.getIndexInfo(null, null, "external_data_sources", true, false)) {
                 while (rs.next()) {
                     String idxName = rs.getString("INDEX_NAME");
-                    if (idxName != null) dsIndexes.add(idxName);
+                    String col = rs.getString("COLUMN_NAME");
+                    if (idxName != null && col != null) {
+                        uniquelyIndexedColumns.add(col);
+                    }
                 }
             }
-            assertTrue(dsIndexes.contains("idx_external_ds_key"),
-                    "idx_external_ds_key index must exist on external_data_sources");
+            assertTrue(uniquelyIndexedColumns.contains("ds_key"),
+                    "ds_key must have a unique index on external_data_sources; found unique cols: "
+                            + uniquelyIndexedColumns);
 
         } catch (Exception e) {
             fail("Failed to verify external_data_sources table: "

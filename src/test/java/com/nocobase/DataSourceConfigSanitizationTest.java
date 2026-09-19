@@ -673,7 +673,8 @@ class DataSourceConfigSanitizationTest {
             assertFalse(msg.contains("secret123"), "Error must not contain query param password value");
             assertFalse(msg.contains("test_user"), "Error must not contain username");
             assertFalse(msg.contains("connection_secret"), "Error must not contain password");
-            assertTrue(msg.contains("***"), "Error message should contain sanitized URL");
+            assertTrue(msg.contains("Driver class name must be"),
+                    "Error should indicate unsupported driver");
         }
     }
 }

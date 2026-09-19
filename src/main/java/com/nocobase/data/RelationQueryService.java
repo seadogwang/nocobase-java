@@ -14,7 +14,7 @@ import java.util.stream.Collectors;
 
 /**
  * Handles relation field queries (appends).
- * All data access goes through DynamicRepository — no direct JdbcTemplate usage.
+ * All data access goes through DynamicRepository -- no direct JdbcTemplate usage.
  */
 @Service
 public class RelationQueryService {
@@ -89,7 +89,7 @@ public class RelationQueryService {
 
         if (fkValues.isEmpty()) return;
 
-        // Query via DynamicRepository with $in filter — ACL scope and field filtering applied automatically
+        // Query via DynamicRepository with $in filter -- ACL scope and field filtering applied automatically
         // P0-D: batch $in queries to avoid Integer.MAX_VALUE / overly large SQL
         Map<Object, Map<String, Object>> relatedMap = batchListByKey(
                 rel.getTargetCollection(), targetKey, fkValues, null);
@@ -190,7 +190,7 @@ public class RelationQueryService {
             return;
         }
 
-        // Query target table via DynamicRepository — P0-D: batch $in queries
+        // Query target table via DynamicRepository -- P0-D: batch $in queries
         Map<Object, Map<String, Object>> targetMap = batchListByKey(
                 rel.getTargetCollection(), targetKey, new ArrayList<>(targetIds), null);
 

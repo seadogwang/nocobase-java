@@ -142,7 +142,7 @@ public class SqlDataSourceResolver {
                 if (newHolder != null) {
                     closeDataSourceSafely(newHolder.dataSource, dataSourceKey);
                 }
-                // Mark as unavailable — do NOT crash the application
+                // Mark as unavailable -- do NOT crash the application
                 unavailableDataSources.add(dataSourceKey);
                 log.error("Failed to create data source '{}': {} [{}]",
                         dataSourceKey, SqlErrorSanitizer.sanitizeForLog(e.getMessage()),
@@ -177,7 +177,7 @@ public class SqlDataSourceResolver {
         if (registry.containsKey(dataSourceKey)) {
             return true;
         }
-        // Config exists but hasn't been proven — not available yet
+        // Config exists but hasn't been proven -- not available yet
         return false;
     }
 
@@ -190,7 +190,7 @@ public class SqlDataSourceResolver {
      * <p>For external data sources, the configured {@code dialect} property
      * is used. If no dialect is configured, it is derived from the JDBC URL.
      * If neither can determine the dialect, a clear configuration error is
-     * thrown — external data sources never silently fall back to H2.
+     * thrown -- external data sources never silently fall back to H2.
      *
      * <p>Only {@code h2} and {@code postgresql} dialects are supported.
      * Unsupported dialects (e.g. {@code mysql}) are rejected with a clear
@@ -292,7 +292,7 @@ public class SqlDataSourceResolver {
             closeDataSourceSafely(old.dataSource, dataSourceKey);
         }
 
-        // Remove from unavailable set — allow re-validation
+        // Remove from unavailable set -- allow re-validation
         unavailableDataSources.remove(dataSourceKey);
 
         // Re-create and re-validate
@@ -320,7 +320,7 @@ public class SqlDataSourceResolver {
         registry.clear();
     }
 
-    // ── private helpers ──────────────────────────────────────────────────
+    // -- private helpers --------------------------------------------------
 
     private SqlDialect detectDialect(NocobaseDataSourceProperties.DataSourceConfig config,
                                       boolean isMain, String dataSourceKey) {
@@ -383,7 +383,7 @@ public class SqlDataSourceResolver {
      * <p><b>Preflight check:</b> Before creating the HikariDataSource, a
      * lightweight connection test is performed using {@link DriverManager}.
      * This ensures that Hikari never logs raw "Exception during pool
-     * initialization" stack traces — the preflight catches connection
+     * initialization" stack traces -- the preflight catches connection
      * failures before Hikari is ever involved.
      *
      * @param key    the data source key (for pool naming)
@@ -393,7 +393,7 @@ public class SqlDataSourceResolver {
      */
     private DataSourceHolder createExternalDataSourceHolder(String key,
                                                              NocobaseDataSourceProperties.DataSourceConfig config) {
-        // Step 1: Preflight — use DriverManager to test connectivity
+        // Step 1: Preflight -- use DriverManager to test connectivity
         // BEFORE creating any HikariDataSource. This prevents Hikari
         // from logging raw "Exception during pool initialization" with
         // JDBC URL, host, port, and full stack trace.
@@ -412,7 +412,7 @@ public class SqlDataSourceResolver {
             dataSource.setPassword(config.getPassword());
         }
 
-        // External data sources are always read-only — no writes allowed
+        // External data sources are always read-only -- no writes allowed
         dataSource.setReadOnly(true);
 
         // Pool configuration for external read-only data sources
@@ -429,7 +429,7 @@ public class SqlDataSourceResolver {
         // the pool works. If this fails, the caller will close the
         // HikariDataSource to prevent resource leaks.
         try (Connection conn = dataSource.getConnection()) {
-            // Connection opened successfully — close immediately
+            // Connection opened successfully -- close immediately
         } catch (SQLException e) {
             throw new DataSourceUnavailableException(key,
                     SqlErrorSanitizer.sanitizeForLog(e.getMessage()));
@@ -477,9 +477,9 @@ public class SqlDataSourceResolver {
                         + "The data source will be treated as read-only at the application level "
                         + "(SQL collections are always read-only regardless of the driver).", key);
             }
-            // Connection opened and verified — close immediately
+            // Connection opened and verified -- close immediately
         } catch (SQLException e) {
-            // Sanitize the error message BEFORE throwing — DriverManager
+            // Sanitize the error message BEFORE throwing -- DriverManager
             // exceptions may contain JDBC URL, host, port, etc.
             throw new DataSourceUnavailableException(key,
                     SqlErrorSanitizer.sanitizeForLog(e.getMessage()));
@@ -506,7 +506,7 @@ public class SqlDataSourceResolver {
         }
     }
 
-    // ── inner types ──────────────────────────────────────────────────────
+    // -- inner types ------------------------------------------------------
 
     /**
      * Close a data source safely, logging any errors.

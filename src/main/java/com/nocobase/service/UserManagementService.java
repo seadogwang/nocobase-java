@@ -212,28 +212,37 @@ public class UserManagementService {
      */
     @Transactional
     public void updateUserRoles(Long userId, List<Long> newRoleIds) {
-        if (!userRepository.existsById(userId)) {
-            throw new ResourceNotFoundException("User", String.valueOf(userId));
-        }
+        try {
+            if (!userRepository.existsById(userId)) {
+                throw new ResourceNotFoundException("User", String.valueOf(userId));
+            }
 
-        if (newRoleIds == null) {
-            throw new IllegalArgumentException("roles list is required");
-        }
+            if (newRoleIds == null) {
+                throw new IllegalArgumentException("roles list is required");
+            }
 
-        // Check if we're about to remove the last admin/root
-        ensureNotRemovingLastAdminOrRoot(userId, newRoleIds);
+            // Check if we're about to remove the last admin/root
+            ensureNotRemovingLastAdminOrRoot(userId, newRoleIds);
 
-        // Remove all existing role assignments
-        userRoleRepository.deleteByUserId(userId);
+            // Remove all existing role assignments
+            userRoleRepository.deleteByUserId(userId);
 
-        // Add new role assignments
-        for (Long roleId : newRoleIds) {
-            Role role = roleRepository.findById(roleId)
-                    .orElseThrow(() -> new IllegalArgumentException("Role not found: " + roleId));
-            UserRole ur = new UserRole();
-            ur.setUserId(userId);
-            ur.setRoleId(role.getId());
-            userRoleRepository.save(ur);
+            // Add new role assignments
+            for (Long roleId : newRoleIds) {
+                Role role = roleRepository.findById(roleId)
+                        .orElseThrow(() -> new IllegalArgumentException("Role not found: " + roleId));
+                UserRole ur = new UserRole();
+                ur.setUserId(userId);
+                ur.setRoleId(role.getId());
+                userRoleRepository.save(ur);
+            }
+
+            auditLogService.auditSuccess("updateRoles", "user", String.valueOf(userId),
+                    Map.of("newRoleIdsCount", newRoleIds.size()));
+        } catch (Exception e) {
+            auditLogService.auditFailure("updateRoles", "user", String.valueOf(userId),
+                    Map.of("error", e.getMessage() != null ? e.getMessage() : "Unknown error"));
+            throw e;
         }
     }
 
@@ -330,7 +339,7 @@ public class UserManagementService {
             return; // User still has admin/root, safe
         }
 
-        // User is about to lose admin/root — check there are other admin/root users
+        // User is about to lose admin/root -- check there are other admin/root users
         List<UserRole> allAdminAssignments = userRoleRepository.findByRoleIdIn(adminRoleIds);
         Set<Long> otherAdminUserIds = allAdminAssignments.stream()
                 .map(UserRole::getUserId)

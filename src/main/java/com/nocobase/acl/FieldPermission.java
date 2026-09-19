@@ -10,9 +10,9 @@ import java.util.Set;
  * <p>
  * Semantics:
  * <ul>
- * <li>{@code all()} — all fields are allowed (admin/root or no field restriction configured)</li>
- * <li>{@code none()} — no fields are allowed (user has no permission at all)</li>
- * <li>{@code only(Set)} — only the specified fields are allowed</li>
+ * <li>{@code all()} -- all fields are allowed (admin/root or no field restriction configured)</li>
+ * <li>{@code none()} -- no fields are allowed (user has no permission at all)</li>
+ * <li>{@code only(Set)} -- only the specified fields are allowed</li>
  * </ul>
  */
 public class FieldPermission {

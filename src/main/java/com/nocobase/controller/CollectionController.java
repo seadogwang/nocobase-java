@@ -20,7 +20,7 @@ import java.util.stream.Collectors;
 
 /**
  * Collection and Field management controller.
- * All operations go through CollectionMetadataService — no direct JdbcTemplate usage.
+ * All operations go through CollectionMetadataService -- no direct JdbcTemplate usage.
  * Errors are thrown as standard exceptions handled by GlobalExceptionHandler.
  */
 @RestController

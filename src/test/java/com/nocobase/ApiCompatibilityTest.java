@@ -984,11 +984,12 @@ class ApiCompatibilityTest {
     @Test
     @DisplayName("P2-H: POST /api/applicationPlugins:disable — error params (missing name)")
     void applicationPluginsDisableErrorParams() throws Exception {
-        // Missing required @RequestParam causes 500 (MissingServletRequestParameterException
-        // falls through to general Exception handler).
+        // Missing required @RequestParam now maps to 400 (MissingServletRequestParameterException
+        // has a dedicated handler), not 500.
         mockMvc.perform(post("/api/applicationPlugins:disable")
                         .header("Authorization", "Bearer " + authToken))
-                .andExpect(status().is5xxServerError());
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors[0].message").isString());
     }
 
     // ========================================================================
@@ -1421,7 +1422,7 @@ class ApiCompatibilityTest {
         // Only the colon format (/api/{collection}:list) is supported for dynamic collections.
         mockMvc.perform(get("/api/" + TEST_CRUD_COLL + "/list")
                         .header("Authorization", "Bearer " + authToken))
-                .andExpect(status().is4xxClientError());
+                .andExpect(status().isNotFound());
     }
 
     @Test
@@ -1443,13 +1444,16 @@ class ApiCompatibilityTest {
     void crudDynamicCreateWriteSlash() throws Exception {
         createTestCrudCollection();
         // Slash paths for dynamic CRUD collections are not rewritten by NocobaseUrlFilter.
-        // The request reaches a non-existent endpoint and causes a server error.
+        // The POST reaches a non-matching route and surfaces as a server error (500).
+        // This is a known routing quirk (not a contract category); the response body
+        // is still the sanitized generic "Internal server error" envelope.
         Map<String, Object> body = Map.of("name", "p2h-crud-slash-test");
         mockMvc.perform(post("/api/" + TEST_CRUD_COLL + "/create")
                         .header("Authorization", "Bearer " + authToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(body)))
-                .andExpect(status().is5xxServerError());
+                .andExpect(status().is5xxServerError())
+                .andExpect(jsonPath("$.errors[0].message").exists());
     }
 
     @Test

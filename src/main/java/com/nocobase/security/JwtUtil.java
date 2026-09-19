@@ -108,10 +108,10 @@ public class JwtUtil {
                     .parseSignedClaims(token)
                     .getPayload();
         } catch (ExpiredJwtException e) {
-            // Token expired — this is expected, don't log the token
+            // Token expired -- this is expected, don't log the token
             return null;
         } catch (JwtException | IllegalArgumentException e) {
-            // Invalid token — don't log the token text
+            // Invalid token -- don't log the token text
             return null;
         }
     }

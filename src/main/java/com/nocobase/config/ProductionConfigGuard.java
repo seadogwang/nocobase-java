@@ -58,7 +58,7 @@ public class ProductionConfigGuard implements ApplicationListener<ApplicationEnv
         boolean isTestProfile = Arrays.asList(activeProfiles).contains("test");
 
         if (isTestProfile) {
-            log.info("Test profile active — skipping production config guard checks");
+            log.info("Test profile active -- skipping production config guard checks");
             return;
         }
 

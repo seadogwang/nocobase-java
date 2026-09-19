@@ -71,7 +71,7 @@ public class SqlNamedParameterParser {
             char c = sql.charAt(i);
 
             if (c == '\'') {
-                // Single-quoted string literal — skip entire content
+                // Single-quoted string literal -- skip entire content
                 int start = i;
                 i = skipSingleQuotedString(sql, i);
                 out.append(sql, start, i);
@@ -79,7 +79,7 @@ public class SqlNamedParameterParser {
             }
 
             if (c == '"') {
-                // Double-quoted identifier — skip entire content
+                // Double-quoted identifier -- skip entire content
                 int start = i;
                 i = skipDoubleQuotedIdentifier(sql, i);
                 out.append(sql, start, i);
@@ -94,21 +94,21 @@ public class SqlNamedParameterParser {
 
                 char next = sql.charAt(i + 1);
 
-                // Check for PostgreSQL ::type cast — colon followed by another colon
+                // Check for PostgreSQL ::type cast -- colon followed by another colon
                 if (next == ':') {
                     out.append("::");
                     i += 2;
                     continue;
                 }
 
-                // Check for URL-like patterns — colon preceded by a protocol-like word
+                // Check for URL-like patterns -- colon preceded by a protocol-like word
                 if (isPrecededByProtocolLike(sql, i)) {
                     out.append(':');
                     i++;
                     continue;
                 }
 
-                // Check for time literal — colon between digits
+                // Check for time literal -- colon between digits
                 if (isTimeLiteral(sql, i)) {
                     out.append(':');
                     i++;
@@ -143,7 +143,7 @@ public class SqlNamedParameterParser {
                     continue;
                 }
 
-                // Malformed colon usage — not a valid named param, not ::cast, not URL, not time
+                // Malformed colon usage -- not a valid named param, not ::cast, not URL, not time
                 int tokenEnd = i + 1;
                 while (tokenEnd < len && !Character.isWhitespace(sql.charAt(tokenEnd))) {
                     tokenEnd++;
@@ -181,7 +181,7 @@ public class SqlNamedParameterParser {
                 i++;
             }
         }
-        // Unterminated string — return to end
+        // Unterminated string -- return to end
         return len;
     }
 
@@ -206,7 +206,7 @@ public class SqlNamedParameterParser {
                 i++;
             }
         }
-        // Unterminated identifier — return to end
+        // Unterminated identifier -- return to end
         return len;
     }
 

@@ -244,70 +244,84 @@
 
 The `trace.json` file in `src/test/resources/frontend-traces/` provides a complete frontend startup contract replay. Below is the coverage matrix:
 
-| # | Trace Step | Endpoint | Method | Expected Status | Auth Required | Negative | Variable Extraction |
-|---|-----------|----------|--------|-----------------|---------------|----------|---------------------|
-| 1 | Login - obtain auth token | /api/auth:signIn | POST | 200 | No | No | authToken, userId |
-| 2 | [NEGATIVE] Login with wrong password | /api/auth:signIn | POST | 401 | No | Yes | -- |
-| 3 | Auth check - verify token is valid | /api/auth:check | GET | 200 | Yes | No | -- |
-| 4 | Auth user - get current user profile | /api/auth:user | GET | 200 | Yes | No | -- |
-| 5 | [NEGATIVE] Auth check without token | /api/auth:check | GET | 401 | No | Yes | -- |
-| 6 | Application plugins - list enabled | /api/applicationPlugins:listEnabled | GET | 200 | Yes | No | -- |
-| 7 | [NEGATIVE] Application plugins without auth | /api/applicationPlugins:listEnabled | GET | 403 | No | Yes | -- |
-| 8 | Plugins - list all | /api/plugins:list | GET | 200 | Yes | No | -- |
-| 9 | Plugins - list enabled | /api/plugins:enabled | GET | 200 | Yes | No | -- |
-| 10 | System settings - get settings | /api/systemSettings:get | GET | 200 | Yes | No | -- |
-| 11 | [NEGATIVE] System settings update with sensitive key | /api/systemSettings:update | POST | 400 | Yes | Yes | -- |
-| 12 | [NEGATIVE] System settings without auth | /api/systemSettings:get | GET | 403 | No | Yes | -- |
-| 13 | UI schema - get tree | /api/uiSchemas:getTree | GET | 200 | Yes | No | rootUid |
-| 14 | UI schema - get tree by uid | /api/uiSchemas:getTreeByUid | GET | 200 | Yes | No | -- |
-| 15 | UI schema - get JSON schema | /api/uiSchemas:getJsonSchema | GET | 200 | Yes | No | -- |
-| 16 | UI schema - get tree by schemaUid | /api/uiSchemas:getTreeBySchemaUid | GET | 200 | Yes | No | -- |
-| 17 | [NEGATIVE] UI schema getTree without auth | /api/uiSchemas:getTree | GET | 403 | No | Yes | -- |
-| 18 | Collection manager - list collections | /api/collections:list | GET | 200 | Yes | No | -- |
-| 19 | [NEGATIVE] Collection manager list without auth | /api/collections:list | GET | 403 | No | Yes | -- |
-| 20 | CRUD - list users | /api/users:list | GET | 200 | Yes | No | -- |
-| 21 | CRUD - get user by id | /api/users:get | GET | 200 | Yes | No | -- |
-| 22 | CRUD - list roles | /api/roles:list | GET | 200 | Yes | No | -- |
-| 23 | [NEGATIVE] CRUD - list users without auth | /api/users:list | GET | 403 | No | Yes | -- |
-| 24 | [NEGATIVE] CRUD - list non-existent collection returns 404 | /api/nonexistent_xyz_123:list | GET | 404 | Yes | Yes | -- |
-| 25 | ACL - list role resources | /api/acl/roleResources:list | GET | 200 | Yes | No | -- |
-| 26 | [NEGATIVE] ACL - list role resources without auth | /api/acl/roleResources:list | GET | 403 | No | Yes | -- |
-| 27 | Data sources - list (read-only path) | /api/dataSources:list | GET | 200 | Yes | No | -- |
-| 28 | [NEGATIVE] Data sources - list without auth (admin required) | /api/dataSources:list | GET | 403 | No | Yes | -- |
-| 29 | Data sources - get by key (reserved key returns 400) | /api/dataSources:get | GET | 400 | Yes | No | -- |
-| 30 | Auth - logout | /api/auth:logout | POST | 200 | No | No | -- |
-| 31 | UI schema - get parent JSON schema | /api/uiSchemas:getParentJsonSchema | GET | 200 | Yes | No | -- |
-| 32 | UI schema templates - list | /api/uiSchemaTemplates:list | GET | 200 | Yes | No | -- |
-| 33 | UI schema templates - get non-existent returns 404 | /api/uiSchemaTemplates:get | GET | 404 | Yes | No | -- |
-| 34 | Data sources - get verify masked fields | /api/dataSources:get | GET | 400 | Yes | No | -- |
-| 35 | Plugins - enable | /api/plugins:enable | POST | 200 | Yes | No | -- |
-| 36 | Plugins - disable | /api/plugins:disable | POST | 400 | Yes | No | -- |
-| 37 | Plugins - uninstall | /api/plugins:uninstall | POST | 400 | Yes | No | -- |
-| 38 | Application plugins - uninstall | /api/applicationPlugins:uninstall | POST | 400 | Yes | No | -- |
-| 39 | Application plugins - remove | /api/applicationPlugins:remove | POST | 400 | Yes | No | -- |
-| 40 | Collection manager - dryRun | /api/collections:dryRun | POST | 200 | Yes | No | -- |
-| 41 | Fields - destroy (nonexistent collection returns 404) | /api/fields:destroy | POST | 404 | Yes | No | -- |
-| 42 | Auth - refresh token | /api/auth:refresh | POST | 200 | Yes | No | authToken |
-| 43 | [NEGATIVE] Auth - refresh without token | /api/auth:refresh | POST | 401 | No | Yes | -- |
-| 44 | CRUD - create user | /api/users:create | POST | 200 | Yes | No | createdUserId |
-| 45 | CRUD - update user | /api/users:update | POST | 200 | Yes | No | -- |
-| 46 | CRUD - destroy user | /api/users:destroy | POST | 200 | Yes | No | -- |
-| 47 | Association - list user roles | /api/users.roles:list | GET | 200 | Yes | No | -- |
-| 48 | Association - add role to user | /api/users.roles:add | POST | 200 | Yes | No | -- |
-| 49 | Association - remove role from user | /api/users.roles:remove | POST | 200 | Yes | No | -- |
-| 50 | Association - set user roles | /api/users.roles:set | POST | 200 | Yes | No | -- |
-| 51 | Data sources - create | /api/dataSources:create | POST | 200 | Yes | No | dsKey |
-| 52 | [NEGATIVE] Data sources - create without auth | /api/dataSources:create | POST | 403 | No | Yes | -- |
-| 53 | Data sources - test connection | /api/dataSources:testConnection | POST | 200 | Yes | No | -- |
-| 54 | Data sources - destroy | /api/dataSources:destroy | POST | 200 | Yes | No | -- |
-| 55 | Fields - create | /api/fields:create | POST | 200 | Yes | No | -- |
-| 56 | [NEGATIVE] Fields - create without auth | /api/fields:create | POST | 403 | No | Yes | -- |
-| 57 | Fields - destroy | /api/fields:destroy | POST | 200 | Yes | No | -- |
-| 58 | [NEGATIVE] Data sources - create with invalid URL | /api/dataSources:create | POST | 400 | Yes | Yes | -- |
-| 59 | [NEGATIVE] Fields - create on non-existent collection | /api/fields:create | POST | 404 | Yes | Yes | -- |
+| # | Trace Step | Endpoint | Method | Expected Status | Auth Required | Negative | Real Trace | Variable Extraction |
+|---|-----------|----------|--------|-----------------|---------------|----------|------------|---------------------|
+| 1 | Login - obtain auth token | /api/auth:signIn | POST | 200 | No | No | Yes | authToken, userId |
+| 2 | [NEGATIVE] Login with wrong password | /api/auth:signIn | POST | 401 | No | Yes | Yes | -- |
+| 3 | Auth check - verify token is valid | /api/auth:check | GET | 200 | Yes | No | Yes | -- |
+| 4 | Auth user - get current user profile | /api/auth:user | GET | 200 | Yes | No | Yes | -- |
+| 5 | [NEGATIVE] Auth check without token | /api/auth:check | GET | 401 | No | Yes | Yes | -- |
+| 6 | Application plugins - list enabled | /api/applicationPlugins:listEnabled | GET | 200 | Yes | No | Yes | -- |
+| 7 | [NEGATIVE] Application plugins without auth | /api/applicationPlugins:listEnabled | GET | 403 | No | Yes | Yes | -- |
+| 8 | Plugins - list all | /api/plugins:list | GET | 200 | Yes | No | Yes | -- |
+| 9 | Plugins - list enabled | /api/plugins:enabled | GET | 200 | Yes | No | Yes | -- |
+| 10 | System settings - get settings | /api/systemSettings:get | GET | 200 | Yes | No | Yes | -- |
+| 11 | [NEGATIVE] System settings update with sensitive key | /api/systemSettings:update | POST | 400 | Yes | Yes | Yes | -- |
+| 12 | [NEGATIVE] System settings without auth | /api/systemSettings:get | GET | 403 | No | Yes | Yes | -- |
+| 13 | UI schema - get tree | /api/uiSchemas:getTree | GET | 200 | Yes | No | Yes | rootUid |
+| 14 | UI schema - get tree by uid | /api/uiSchemas:getTreeByUid | GET | 200 | Yes | No | Yes | -- |
+| 15 | UI schema - get JSON schema | /api/uiSchemas:getJsonSchema | GET | 200 | Yes | No | Yes | -- |
+| 16 | UI schema - get tree by schemaUid | /api/uiSchemas:getTreeBySchemaUid | GET | 200 | Yes | No | Yes | -- |
+| 17 | [NEGATIVE] UI schema getTree without auth | /api/uiSchemas:getTree | GET | 403 | No | Yes | Yes | -- |
+| 18 | Collection manager - list collections | /api/collections:list | GET | 200 | Yes | No | Yes | -- |
+| 19 | [NEGATIVE] Collection manager list without auth | /api/collections:list | GET | 403 | No | Yes | Yes | -- |
+| 20 | CRUD - list users | /api/users:list | GET | 200 | Yes | No | Yes | -- |
+| 21 | CRUD - get user by id | /api/users:get | GET | 200 | Yes | No | Yes | -- |
+| 22 | CRUD - list roles | /api/roles:list | GET | 200 | Yes | No | Yes | -- |
+| 23 | [NEGATIVE] CRUD - list users without auth | /api/users:list | GET | 403 | No | Yes | Yes | -- |
+| 24 | [NEGATIVE] CRUD - list non-existent collection returns 404 | /api/nonexistent_xyz_123:list | GET | 404 | Yes | Yes | Yes | -- |
+| 25 | ACL - list role resources | /api/acl/roleResources:list | GET | 200 | Yes | No | Yes | -- |
+| 26 | [NEGATIVE] ACL - list role resources without auth | /api/acl/roleResources:list | GET | 403 | No | Yes | Yes | -- |
+| 27 | Data sources - list (read-only path) | /api/dataSources:list | GET | 200 | Yes | No | Yes | -- |
+| 28 | [NEGATIVE] Data sources - list without auth (admin required) | /api/dataSources:list | GET | 403 | No | Yes | Yes | -- |
+| 29 | Data sources - get by key (reserved key returns 400) | /api/dataSources:get | GET | 400 | Yes | No | Yes | -- |
+| 30 | Auth - logout | /api/auth:logout | POST | 200 | No | No | Yes | -- |
+| 31 | UI schema - get parent JSON schema | /api/uiSchemas:getParentJsonSchema | GET | 200 | Yes | No | Yes | -- |
+| 32 | UI schema templates - list | /api/uiSchemaTemplates:list | GET | 200 | Yes | No | Yes | -- |
+| 33 | UI schema templates - get non-existent returns 404 | /api/uiSchemaTemplates:get | GET | 404 | Yes | No | Yes | -- |
+| 34 | Data sources - get verify masked fields | /api/dataSources:get | GET | 400 | Yes | No | Yes | -- |
+| 35 | Plugins - enable | /api/plugins:enable | POST | 200 | Yes | No | Yes | -- |
+| 36 | Plugins - disable | /api/plugins:disable | POST | 400 | Yes | No | Yes | -- |
+| 37 | Plugins - uninstall | /api/plugins:uninstall | POST | 400 | Yes | No | Yes | -- |
+| 38 | Application plugins - uninstall | /api/applicationPlugins:uninstall | POST | 400 | Yes | No | Yes | -- |
+| 39 | Application plugins - remove | /api/applicationPlugins:remove | POST | 400 | Yes | No | Yes | -- |
+| 40 | Collection manager - dryRun | /api/collections:dryRun | POST | 200 | Yes | No | Yes | -- |
+| 41 | Fields - destroy (nonexistent collection returns 404) | /api/fields:destroy | POST | 404 | Yes | No | Yes | -- |
+| 42 | Auth - refresh token | /api/auth:refresh | POST | 200 | Yes | No | Yes | authToken |
+| 43 | [NEGATIVE] Auth - refresh without token | /api/auth:refresh | POST | 401 | No | Yes | Yes | -- |
+| 44 | CRUD - create user | /api/users:create | POST | 200 | Yes | No | Yes | createdUserId |
+| 45 | CRUD - update user | /api/users:update | POST | 200 | Yes | No | Yes | -- |
+| 46 | CRUD - destroy user | /api/users:destroy | POST | 200 | Yes | No | Yes | -- |
+| 47 | Association - list roles for user | /api/users/{userId}/roles:list | GET | 200 | Yes | No | Yes | -- |
+| 48 | Association - update roles for user | /api/users/{userId}/roles:update | POST | 200 | Yes | No | Yes | -- |
+| 49 | Data sources - create | /api/dataSources:create | POST | 200 | Yes | No | Yes | dsKey |
+| 50 | [NEGATIVE] Data sources - create without auth | /api/dataSources:create | POST | 403 | No | Yes | Yes | -- |
+| 51 | Data sources - test connection | /api/dataSources:testConnection | POST | 200 | Yes | No | Yes | -- |
+| 52 | Data sources - destroy | /api/dataSources:destroy | POST | 200 | Yes | No | Yes | -- |
+| 53 | Fields - create | /api/fields:create | POST | 200 | Yes | No | Yes | -- |
+| 54 | [NEGATIVE] Fields - create without auth | /api/fields:create | POST | 403 | No | Yes | Yes | -- |
+| 55 | Fields - destroy | /api/fields:destroy | POST | 200 | Yes | No | Yes | -- |
+| 56 | [NEGATIVE] Data sources - create with invalid URL | /api/dataSources:create | POST | 400 | Yes | Yes | Yes | -- |
+| 57 | [NEGATIVE] Fields - create on non-existent collection | /api/fields:create | POST | 404 | Yes | Yes | Yes | -- |
+| 58 | [NEGATIVE] Bootstrap setup with wrong HTTP method | /api/bootstrap:setup | GET | 405 | No | Yes | Yes | -- |
+| 59 | Collections:get - get specific collection by name | /api/collections:get | GET | 200 | Yes | No | Yes | -- |
+| 60 | Roles:create - create a test role | /api/roles:create | POST | 200 | Yes | No | Yes | roleId |
+| 61 | ACL roleResourceActions:list | /api/acl/roleResourceActions:list | GET | 200 | Yes | No | Yes | -- |
+| 62 | ACL roleResourceScopes:list | /api/acl/roleResourceScopes:list | GET | 200 | Yes | No | Yes | -- |
+| 63 | [NEGATIVE] ACL roleResourceActions:create with invalid action | /api/acl/roleResourceActions:create | POST | 400 | Yes | Yes | Yes | -- |
+| 64 | Roles:destroy - destroy the test role | /api/roles:destroy | POST | 200 | Yes | No | Yes | -- |
+| 65 | [NEGATIVE] SQL collection write attempted | /api/test_sql_readonly_api:create | POST | 403 | Yes | Yes | Yes | -- |
+| 66 | CRUD - create non-admin test user | /api/users:create | POST | 200 | Yes | No | Yes | nonAdminUserId |
+| 67 | Login as non-admin user | /api/auth:signIn | POST | 200 | No | No | Yes | authToken |
+| 68 | [NEGATIVE] Non-admin tries admin-only endpoint | /api/dataSources:list | GET | 403 | Yes | Yes | Yes | -- |
+| 69 | SystemSettings:get for non-admin user | /api/systemSettings:get | GET | 200 | Yes | No | Yes | -- |
+| 70 | Login as admin again (restore admin token) | /api/auth:signIn | POST | 200 | No | No | Yes | authToken |
+| 71 | Auth - refresh token before user lookup | /api/auth:refresh | POST | 200 | Yes | No | Yes | authToken |
+| 72 | Auth:user after token refresh | /api/auth:user | GET | 200 | Yes | No | Yes | -- |
+| 73 | Collections:list with pagination | /api/collections:list | GET | 200 | Yes | No | Yes | -- |
 
-**Total trace steps:** 59
-**Covered endpoints:** /api/auth:signIn, /api/auth:check, /api/auth:user, /api/auth:refresh, /api/auth:logout, /api/applicationPlugins:listEnabled, /api/applicationPlugins:uninstall, /api/applicationPlugins:remove, /api/plugins:list, /api/plugins:enabled, /api/plugins:enable, /api/plugins:disable, /api/plugins:uninstall, /api/systemSettings:get, /api/systemSettings:update, /api/uiSchemas:getTree, /api/uiSchemas:getTreeByUid, /api/uiSchemas:getTreeBySchemaUid, /api/uiSchemas:getJsonSchema, /api/uiSchemas:getParentJsonSchema, /api/uiSchemaTemplates:list, /api/uiSchemaTemplates:get, /api/collections:list, /api/collections:dryRun, /api/users:list, /api/users:get, /api/users:create, /api/users:update, /api/users:destroy, /api/users.roles:list, /api/users.roles:add, /api/users.roles:remove, /api/users.roles:set, /api/roles:list, /api/acl/roleResources:list, /api/dataSources:list, /api/dataSources:get, /api/dataSources:create, /api/dataSources:destroy, /api/dataSources:testConnection, /api/fields:create, /api/fields:destroy
-**Negative assertions:** 16
-**Variable extractions:** 5 (authToken, userId, rootUid, createdUserId, dsKey)
+**Total trace steps:** 73
+**Covered endpoints:** /api/auth:signIn, /api/auth:check, /api/auth:user, /api/auth:refresh, /api/auth:logout, /api/applicationPlugins:listEnabled, /api/applicationPlugins:uninstall, /api/applicationPlugins:remove, /api/plugins:list, /api/plugins:enabled, /api/plugins:enable, /api/plugins:disable, /api/plugins:uninstall, /api/systemSettings:get, /api/systemSettings:update, /api/uiSchemas:getTree, /api/uiSchemas:getTreeByUid, /api/uiSchemas:getTreeBySchemaUid, /api/uiSchemas:getJsonSchema, /api/uiSchemas:getParentJsonSchema, /api/uiSchemaTemplates:list, /api/uiSchemaTemplates:get, /api/collections:list, /api/collections:get, /api/collections:dryRun, /api/users:list, /api/users:get, /api/users:create, /api/users:update, /api/users:destroy, /api/users/{userId}/roles:list, /api/users/{userId}/roles:update, /api/roles:list, /api/roles:create, /api/roles:destroy, /api/acl/roleResources:list, /api/acl/roleResourceActions:list, /api/acl/roleResourceActions:create, /api/acl/roleResourceScopes:list, /api/dataSources:list, /api/dataSources:get, /api/dataSources:create, /api/dataSources:destroy, /api/dataSources:testConnection, /api/fields:create, /api/fields:destroy, /api/bootstrap:setup, /api/test_sql_readonly_api:create
+**Negative assertions:** 21
+**Variable extractions:** 8 (authToken, userId, rootUid, createdUserId, dsKey, roleId, nonAdminUserId, authToken refresh)
 **Test method:** `ApiCompatibilityTest.replayFrontendTrace()`

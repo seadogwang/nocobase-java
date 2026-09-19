@@ -11,7 +11,7 @@ import java.util.*;
 
 /**
  * Service for system settings management.
- * Encapsulates all repository access — controllers must NOT directly inject repositories.
+ * Encapsulates all repository access -- controllers must NOT directly inject repositories.
  * Transaction boundaries are in the service layer.
  */
 @Service
@@ -79,43 +79,49 @@ public class SystemSettingsService {
      */
     @Transactional
     public Map<String, Object> update(Map<String, Object> body) {
-        for (Map.Entry<String, Object> entry : body.entrySet()) {
-            String key = entry.getKey().trim();
+        try {
+            for (Map.Entry<String, Object> entry : body.entrySet()) {
+                String key = entry.getKey().trim();
 
-            // Reject sensitive keys (case-insensitive)
-            if (isSensitiveKey(key)) {
-                throw new IllegalArgumentException("Cannot update sensitive setting: " + key);
+                // Reject sensitive keys (case-insensitive)
+                if (isSensitiveKey(key)) {
+                    throw new IllegalArgumentException("Cannot update sensitive setting: " + key);
+                }
+
+                Object rawValue = entry.getValue();
+                String value = serializeValue(rawValue);
+                String type = determineValueType(rawValue);
+
+                // Upsert
+                settingsRepository.findBySettingKey(key).ifPresentOrElse(
+                        existing -> {
+                            existing.setSettingValue(value);
+                            existing.setValueType(type);
+                            settingsRepository.save(existing);
+                        },
+                        () -> {
+                            SystemSettings setting = new SystemSettings();
+                            setting.setSettingKey(key);
+                            setting.setSettingValue(value);
+                            setting.setValueType(type);
+                            settingsRepository.save(setting);
+                        }
+                );
             }
 
-            Object rawValue = entry.getValue();
-            String value = serializeValue(rawValue);
-            String type = determineValueType(rawValue);
+            // Audit the update (keys only, never values which may contain secrets)
+            auditLogService.auditSuccess("update", "systemSettings", "settings",
+                    Map.of("updatedKeys", body.keySet().stream()
+                            .filter(k -> !isSensitiveKey(k))
+                            .collect(java.util.stream.Collectors.toList())));
 
-            // Upsert
-            settingsRepository.findBySettingKey(key).ifPresentOrElse(
-                    existing -> {
-                        existing.setSettingValue(value);
-                        existing.setValueType(type);
-                        settingsRepository.save(existing);
-                    },
-                    () -> {
-                        SystemSettings setting = new SystemSettings();
-                        setting.setSettingKey(key);
-                        setting.setSettingValue(value);
-                        setting.setValueType(type);
-                        settingsRepository.save(setting);
-                    }
-            );
+            // Return the updated settings (immediately readable after flush)
+            return get();
+        } catch (Exception e) {
+            auditLogService.auditFailure("update", "systemSettings", "settings",
+                    Map.of("error", e.getMessage() != null ? e.getMessage() : "Unknown error"));
+            throw e;
         }
-
-        // Audit the update (keys only, never values which may contain secrets)
-        auditLogService.auditSuccess("update", "systemSettings", "settings",
-                Map.of("updatedKeys", body.keySet().stream()
-                        .filter(k -> !isSensitiveKey(k))
-                        .collect(java.util.stream.Collectors.toList())));
-
-        // Return the updated settings (immediately readable after flush)
-        return get();
     }
 
     /**

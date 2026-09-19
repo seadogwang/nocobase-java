@@ -25,14 +25,14 @@ import java.util.stream.Collectors;
 
 /**
  * Executes SQL query collections.
- * Only called by DynamicRepository — never directly by controllers or services.
+ * Only called by DynamicRepository -- never directly by controllers or services.
  */
 @Component
 public class SqlQueryCollectionExecutor {
 
     private static final Logger log = LoggerFactory.getLogger(SqlQueryCollectionExecutor.class);
 
-    // ── query governance defaults (overridable via application properties) ──
+    // -- query governance defaults (overridable via application properties) --
 
     @Value("${nocobase.sql.query-timeout-seconds:30}")
     private int queryTimeoutSeconds = 30;
@@ -79,7 +79,7 @@ public class SqlQueryCollectionExecutor {
         long countDurationMs = 0;
         long dataDurationMs = 0;
         try {
-            // ── query governance: normalize page and cap pageSize ──
+            // -- query governance: normalize page and cap pageSize --
             page = Math.max(1, page);
             if (pageSize <= 0) {
                 pageSize = 20; // default consistent with GenericCrudController
@@ -103,11 +103,11 @@ public class SqlQueryCollectionExecutor {
             SqlQueryPlan plan = buildListPlan(hydrated.sql, selectClause, compiledFilter, sortClause,
                     page, pageSize, hydrated.paramValues, dialect);
 
-            // Execute count — wrap in try-catch to prevent SQL leakage in error messages
+            // Execute count -- wrap in try-catch to prevent SQL leakage in error messages
             Long total;
             List<Map<String, Object>> rows;
             try {
-                // P0-C: statement-level query timeout — no shared state modified
+                // P0-C: statement-level query timeout -- no shared state modified
                 JdbcTemplate jdbc = dataSourceResolver.resolve(def.getDataSourceKey());
 
                 // Count phase
@@ -152,6 +152,14 @@ public class SqlQueryCollectionExecutor {
                         });
                 dataDurationMs = System.currentTimeMillis() - dataStart;
             } catch (Exception e) {
+                // A genuinely unavailable data source must surface as 503 (service
+                // unavailable, retry later), not a generic 500 SQL error, so the
+                // client can distinguish transient infrastructure failure from a
+                // real query error. Re-throw it unwrapped to reach the dedicated
+                // @ExceptionHandler(DataSourceUnavailableException.class) -> 503.
+                if (e instanceof DataSourceUnavailableException) {
+                    throw (DataSourceUnavailableException) e;
+                }
                 log.error("SQL execution error for collection '{}': {} [{}]",
                         def.getName(), SqlErrorSanitizer.sanitizeForLog(e.getMessage()), e.getClass().getSimpleName());
                 throw new SqlCollectionExecutionException(
@@ -226,7 +234,7 @@ public class SqlQueryCollectionExecutor {
             sql.append(" ORDER BY ").append(sortClause);
         }
 
-        // Count SQL — same filtering, no field projection, no sort, no pagination
+        // Count SQL -- same filtering, no field projection, no sort, no pagination
         StringBuilder countSql = new StringBuilder("SELECT COUNT(*) FROM (")
                 .append(configuredSql)
                 .append(") _nocobase_sub");
@@ -302,7 +310,7 @@ public class SqlQueryCollectionExecutor {
 
             List<Map<String, Object>> rows;
             try {
-                // P0-C: statement-level query timeout — no shared state modified
+                // P0-C: statement-level query timeout -- no shared state modified
                 JdbcTemplate jdbc = dataSourceResolver.resolve(def.getDataSourceKey());
                 rows = jdbc.query(
                         (Connection con) -> {
@@ -328,6 +336,10 @@ public class SqlQueryCollectionExecutor {
                             return results;
                         });
             } catch (Exception e) {
+                // DataSourceUnavailableException must surface as 503, not 500.
+                if (e instanceof DataSourceUnavailableException) {
+                    throw (DataSourceUnavailableException) e;
+                }
                 log.error("SQL execution error for collection '{}' (get): {} [{}]",
                         def.getName(), SqlErrorSanitizer.sanitizeForLog(e.getMessage()), e.getClass().getSimpleName());
                 throw new SqlCollectionExecutionException(
@@ -410,7 +422,7 @@ public class SqlQueryCollectionExecutor {
                 if (paramDef != null) {
                     dummyParams.add(buildDummyValue(paramDef.getType()));
                 } else {
-                    // Fallback: param in SQL but not in metadata (should not happen — SqlParameterMetadata.from validates)
+                    // Fallback: param in SQL but not in metadata (should not happen -- SqlParameterMetadata.from validates)
                     dummyParams.add(0);
                 }
             }
@@ -418,7 +430,7 @@ public class SqlQueryCollectionExecutor {
             // Wrap as subquery with WHERE 1=0 to expose only metadata, no rows
             String validationSql = "SELECT * FROM (" + parseResult.getSql() + ") _nocobase_sub WHERE 1=0";
 
-            // P0-C: statement-level query timeout — no shared state modified
+            // P0-C: statement-level query timeout -- no shared state modified
             JdbcTemplate jdbcTemplate = dataSourceResolver.resolve(def.getDataSourceKey());
 
             Set<String> columnNames;
@@ -443,7 +455,7 @@ public class SqlQueryCollectionExecutor {
                             return names;
                         });
             } catch (Exception e) {
-                // P0-B: Only log sanitized metadata — no SQL, no raw exception
+                // P0-B: Only log sanitized metadata -- no SQL, no raw exception
                 log.error("Field validation failed for collection '{}' (dataSourceKey='{}'): error category={}, exception class={}",
                         def.getName(), def.getDataSourceKey(),
                         categorizeError(e), e.getClass().getSimpleName());
@@ -477,7 +489,7 @@ public class SqlQueryCollectionExecutor {
 
     /**
      * Build a type-appropriate dummy value for parameter binding during field validation.
-     * The value is only used so the database can parse the query — no rows are returned.
+     * The value is only used so the database can parse the query -- no rows are returned.
      */
     private static Object buildDummyValue(String type) {
         switch (type) {
@@ -515,7 +527,7 @@ public class SqlQueryCollectionExecutor {
         return "execution_error";
     }
 
-    // ── query governance helpers (package-private for testing) ──
+    // -- query governance helpers (package-private for testing) --
 
     /**
      * Normalize a page number: values less than 1 are normalized to 1.

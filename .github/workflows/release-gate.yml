@@ -1,0 +1,54 @@
+name: Release Gate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  release-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Run Release Gate
+        id: gate
+        run: pwsh ./scripts/release-gate.ps1
+        continue-on-error: true
+
+      - name: Upload RELEASE_GATE_RESULT.md
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-gate-result
+          path: RELEASE_GATE_RESULT.md
+          if-no-files-found: warn
+
+      - name: Upload surefire-reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-reports
+          path: target/surefire-reports/
+          if-no-files-found: warn
+
+      - name: Gate Decision
+        if: always()
+        run: |
+          if [[ "${{ steps.gate.outcome }}" == "success" ]]; then
+            echo "ALL GATES PASSED - Release can proceed."
+          else
+            echo "GATES FAILED - Release is BLOCKED."
+            exit 1
+          fi

@@ -119,7 +119,7 @@ public interface DialectAdapter {
         // Check for boolean
         if ("true".equalsIgnoreCase(val)) return "TRUE";
         if ("false".equalsIgnoreCase(val)) return "FALSE";
-        // String literal — escape single quotes and wrap
+        // String literal -- escape single quotes and wrap
         return "'" + val.replace("'", "''") + "'";
     }
 }

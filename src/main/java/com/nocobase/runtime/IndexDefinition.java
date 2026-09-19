@@ -14,7 +14,7 @@ import java.util.*;
  * <p>Index names, table names, and column names are all validated as safe SQL identifiers
  * via {@link SqlIdentifier} at build time.
  *
- * <p>For SQL/view collections, indexes are metadata-only — no physical index DDL is generated.
+ * <p>For SQL/view collections, indexes are metadata-only -- no physical index DDL is generated.
  */
 public class IndexDefinition {
 

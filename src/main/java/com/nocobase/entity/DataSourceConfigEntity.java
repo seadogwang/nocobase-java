@@ -62,11 +62,11 @@ public class DataSourceConfigEntity {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
-    // ── constructors ────────────────────────────────────────────────────
+    // -- constructors ----------------------------------------------------
 
     public DataSourceConfigEntity() {}
 
-    // ── getters / setters ───────────────────────────────────────────────
+    // -- getters / setters -----------------------------------------------
 
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
@@ -104,7 +104,7 @@ public class DataSourceConfigEntity {
     public LocalDateTime getUpdatedAt() { return updatedAt; }
     public void setUpdatedAt(LocalDateTime updatedAt) { this.updatedAt = updatedAt; }
 
-    // ── lifecycle ───────────────────────────────────────────────────────
+    // -- lifecycle -------------------------------------------------------
 
     @PrePersist
     protected void onCreate() {

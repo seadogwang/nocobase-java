@@ -129,20 +129,30 @@ class ErrorEnvelopeTest {
     @Test
     @DisplayName("Forbidden (403): insufficient permissions returns standard error envelope")
     void forbiddenReturns403() throws Exception {
-        // Try to destroy the root role — should be forbidden
+        // Destroying the built-in 'root' role (id=1) is forbidden even for admins.
         MvcResult result = mockMvc.perform(post("/api/roles:destroy")
                         .header("Authorization", "Bearer " + adminToken)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"filter\":{\"name\":\"root\"}}"))
+                        .param("id", "1"))
+                .andExpect(status().isForbidden())
                 .andReturn();
 
-        assertTrue(
-                result.getResponse().getStatus() == 403
-                        || result.getResponse().getStatus() == 404
-                        || result.getResponse().getStatus() == 400,
-                "Expected 403, 404, or 400, got " + result.getResponse().getStatus());
+        Map<String, Object> body = parseResponse(result);
+        verifyErrorEnvelope(body);
+        verifyNoSensitiveData(body);
+    }
+
+    @Test
+    @DisplayName("Malformed JSON body (400): HttpMessageNotReadableException maps to 400")
+    void malformedJsonReturns400() throws Exception {
+        MvcResult result = mockMvc.perform(post("/api/collections:create")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("invalid-json-body-here"))
+                .andExpect(status().isBadRequest())
+                .andReturn();
 
         Map<String, Object> body = parseResponse(result);
+        verifyErrorEnvelope(body);
         verifyNoSensitiveData(body);
     }
 
@@ -151,20 +161,39 @@ class ErrorEnvelopeTest {
     // ========================================================================
 
     @Test
-    @DisplayName("Internal error (500): returns standard envelope without sensitive data")
+    @DisplayName("Internal error (500): SQL execution failure returns standard envelope")
     void internalErrorReturns500() throws Exception {
-        MvcResult result = mockMvc.perform(post("/api/collections:create")
-                        .header("Authorization", "Bearer " + adminToken)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("invalid-json-body-here"))
-                .andReturn();
+        // Create a collection, then insert a record referencing a non-existent
+        // column -> SqlCollectionExecutionException -> 500.
+        String coll = "err_test_500_" + System.currentTimeMillis();
+        try {
+            mockMvc.perform(post("/api/collections:create")
+                            .header("Authorization", "Bearer " + adminToken)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(Map.of(
+                                    "name", coll,
+                                    "type", "physical",
+                                    "tableName", coll,
+                                    "fields", java.util.List.of(Map.of("name", "name", "type", "string"))))))
+                    .andExpect(status().isOk());
 
-        int status = result.getResponse().getStatus();
-        assertTrue(status == 400 || status == 500,
-                "Expected 400 or 500, got " + status);
+            MvcResult result = mockMvc.perform(post("/api/" + coll + ":create")
+                            .header("Authorization", "Bearer " + adminToken)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(Map.of(
+                                    "nonexistent_column_xyz", "value"))))
+                    .andExpect(status().isInternalServerError())
+                    .andReturn();
 
-        Map<String, Object> body = parseResponse(result);
-        verifyNoSensitiveData(body);
+            Map<String, Object> body = parseResponse(result);
+            verifyErrorEnvelope(body);
+            verifyNoSensitiveData(body);
+        } finally {
+            mockMvc.perform(post("/api/collections:destroy")
+                    .header("Authorization", "Bearer " + adminToken)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(objectMapper.writeValueAsString(Map.of("name", coll))));
+        }
     }
 
     // ========================================================================
@@ -242,17 +271,89 @@ class ErrorEnvelopeTest {
     // ========================================================================
 
     @Test
-    @DisplayName("Service unavailable (503): DataSourceUnavailableException maps to 503")
+    @DisplayName("Service unavailable (503): unreachable external data source surfaces 503")
     void dataSourceUnavailableReturns503() throws Exception {
-        MvcResult result = mockMvc.perform(get("/api/sqlCollections:list")
-                        .header("Authorization", "Bearer " + adminToken)
-                        .param("dataSourceKey", "nonexistent-ds-key"))
-                .andReturn();
+        // Reliable 503 recipe (verified against the resolver/controller flow):
+        // 1. register a WORKING external data source (H2 in-memory) so a SQL
+        //    collection can load and enter the runtime registry;
+        // 2. create a SQL collection referencing that data source;
+        // 3. update the data source to an UNREACHABLE PostgreSQL URL — this
+        //    invalidates the resolver cache WITHOUT reloading the collection,
+        //    so the collection stays in the registry;
+        // 4. list the collection -> DynamicRepository -> SqlQueryCollectionExecutor
+        //    -> resolve("work-ds") -> preflight fails -> DataSourceUnavailableException
+        //    -> GlobalExceptionHandler -> 503.
+        String dsKey = "work_ds_" + System.currentTimeMillis();
+        String coll = "err_test_503_" + System.currentTimeMillis();
+        try {
+            // 1. working H2-mem data source
+            mockMvc.perform(post("/api/dataSources:create")
+                            .header("Authorization", "Bearer " + adminToken)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(Map.of(
+                                    "key", dsKey,
+                                    "displayName", "work ds",
+                                    "url", "jdbc:h2:mem:" + dsKey + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1",
+                                    "driverClassName", "org.h2.Driver",
+                                    "username", "sa",
+                                    "password", "",
+                                    "enabled", true,
+                                    "dialect", "h2",
+                                    "readOnly", true))))
+                    .andExpect(status().isOk());
 
-        int status = result.getResponse().getStatus();
-        // May return 503, 404, or 400 depending on routing/validation order
-        assertTrue(status >= 400 && status < 600,
-                "Expected 4xx or 5xx, got " + status);
+            // 2. SQL collection referencing work-ds
+            mockMvc.perform(post("/api/collections:create")
+                            .header("Authorization", "Bearer " + adminToken)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(Map.of(
+                                    "name", coll,
+                                    "type", "sql",
+                                    "sql", "SELECT 'x' AS \"name\"",
+                                    "options", Map.of("dataSourceKey", dsKey),
+                                    "fields", java.util.List.of(Map.of("name", "name", "type", "string"))))))
+                    .andExpect(status().isOk());
+
+            // 3. flip the data source to an unreachable PostgreSQL URL
+            mockMvc.perform(post("/api/dataSources:update")
+                            .header("Authorization", "Bearer " + adminToken)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(Map.of(
+                                    "key", dsKey,
+                                    "url", "jdbc:postgresql://localhost:65432/nosuchdb",
+                                    "driverClassName", "org.postgresql.Driver",
+                                    "dialect", "postgresql"))))
+                    .andExpect(status().isOk());
+
+            // 4. list the collection -> 503
+            MvcResult result = mockMvc.perform(get("/api/" + coll + ":list")
+                            .header("Authorization", "Bearer " + adminToken)
+                            .param("sort", "name"))
+                    .andExpect(status().isServiceUnavailable())
+                    .andReturn();
+
+            Map<String, Object> body = parseResponse(result);
+            verifyErrorEnvelope(body);
+            verifyNoSensitiveData(body);
+            // The response must not echo the raw bad URL or credentials.
+            String serialized = body.toString();
+            assertFalse(serialized.contains("65432"),
+                    "503 response must not leak the unreachable port: " + serialized);
+            assertFalse(serialized.contains("nosuchdb"),
+                    "503 response must not leak the database name: " + serialized);
+        } finally {
+            try {
+                mockMvc.perform(post("/api/collections:destroy")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("name", coll))));
+            } catch (Exception ignored) { /* best-effort */ }
+            try {
+                mockMvc.perform(post("/api/dataSources:destroy")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .param("filterByTk", dsKey));
+            } catch (Exception ignored) { /* best-effort */ }
+        }
     }
 
     // ========================================================================
@@ -260,41 +361,42 @@ class ErrorEnvelopeTest {
     // ========================================================================
 
     @Test
-    @DisplayName("Conflict (409): duplicate resource returns 409 with standard envelope")
+    @DisplayName("Conflict (409): duplicate field returns 409 with standard envelope")
     void conflictReturns409() throws Exception {
-        // Create a collection, then try to create it again
-        String collectionName = "err_test_dup_" + System.currentTimeMillis();
-        String createJson = "{\"name\": \"" + collectionName + "\", \"type\": \"physical\", \"tableName\": \""
-                + collectionName + "\", \"fields\": [{\"name\": \"test_field\", \"type\": \"string\"}]}";
+        // Create a collection with a field, then add the SAME field again ->
+        // IllegalStateException (Field already exists) -> 409 Conflict.
+        String coll = "err_test_409_" + System.currentTimeMillis();
+        try {
+            mockMvc.perform(post("/api/collections:create")
+                            .header("Authorization", "Bearer " + adminToken)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(Map.of(
+                                    "name", coll,
+                                    "type", "physical",
+                                    "tableName", coll,
+                                    "fields", java.util.List.of(Map.of("name", "dup_field", "type", "string"))))))
+                    .andExpect(status().isOk());
 
-        // First create — should succeed
-        mockMvc.perform(post("/api/collections:create")
-                        .header("Authorization", "Bearer " + adminToken)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(createJson))
-                .andExpect(status().isOk());
+            // Add the same field name again -> 409
+            MvcResult conflictResult = mockMvc.perform(post("/api/fields:create")
+                            .header("Authorization", "Bearer " + adminToken)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(Map.of(
+                                    "collectionName", coll,
+                                    "name", "dup_field",
+                                    "type", "string"))))
+                    .andExpect(status().isConflict())
+                    .andReturn();
 
-        // Second create (duplicate) — should return 409 Conflict
-        MvcResult conflictResult = mockMvc.perform(post("/api/collections:create")
-                        .header("Authorization", "Bearer " + adminToken)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(createJson))
-                .andReturn();
-
-        int status = conflictResult.getResponse().getStatus();
-        assertTrue(status == 409 || status == 400 || status == 500,
-                "Expected 409, 400, or 500 for duplicate collection, got " + status);
-
-        if (status == 409) {
-            Map<String, Object> body = parseResponse(conflictResult);
-            verifyErrorEnvelope(body);
+            Map<String, Object> conflictBody = parseResponse(conflictResult);
+            verifyErrorEnvelope(conflictBody);
+            verifyNoSensitiveData(conflictBody);
+        } finally {
+            mockMvc.perform(post("/api/collections:destroy")
+                    .header("Authorization", "Bearer " + adminToken)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(objectMapper.writeValueAsString(Map.of("name", coll))));
         }
-
-        // Cleanup
-        mockMvc.perform(post("/api/collections:destroy")
-                .header("Authorization", "Bearer " + adminToken)
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"name\": \"" + collectionName + "\"}"));
     }
 
     // ========================================================================

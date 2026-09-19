@@ -8,7 +8,7 @@ import java.util.Set;
  * Strongly-typed representation of field options parsed from field metadata JSON.
  *
  * <p>Contains parsed values for nullable, default, length, precision, and scale.
- * All values are nullable — callers should check for null before using.
+ * All values are nullable -- callers should check for null before using.
  */
 public class FieldOptions {
     private final Boolean nullable;
@@ -60,9 +60,9 @@ public class FieldOptions {
      *
      * <p>Two kinds of defaults are supported:
      * <ul>
-     *   <li>{@link Kind#LITERAL} — a literal value (string, number, boolean).
+     *   <li>{@link Kind#LITERAL} -- a literal value (string, number, boolean).
      *       The dialect adapter formats it with proper quoting/escaping.</li>
-     *   <li>{@link Kind#EXPRESSION} — a DB expression (e.g. CURRENT_TIMESTAMP).
+     *   <li>{@link Kind#EXPRESSION} -- a DB expression (e.g. CURRENT_TIMESTAMP).
      *       Only allowlisted expressions are accepted; malicious SQL is rejected
      *       at parse time.</li>
      * </ul>

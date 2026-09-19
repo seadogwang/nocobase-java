@@ -14,14 +14,14 @@ import java.util.List;
  *
  * <p>Supports parameter sources:
  * <ul>
- *   <li>{@code static} — value comes from {@code defaultValue} in the metadata</li>
- *   <li>{@code currentUser} — value comes from {@link CurrentUserContext}, resolved by {@code path}</li>
+ *   <li>{@code static} -- value comes from {@code defaultValue} in the metadata</li>
+ *   <li>{@code currentUser} -- value comes from {@link CurrentUserContext}, resolved by {@code path}</li>
  * </ul>
  *
  * <p>For {@code currentUser} parameters:
  * <ul>
- *   <li>{@code path: "id"} — resolves to the current authenticated user's ID ({@link Long})</li>
- *   <li>{@code path: "email"} — resolves to the current authenticated user's email ({@link String})</li>
+ *   <li>{@code path: "id"} -- resolves to the current authenticated user's ID ({@link Long})</li>
+ *   <li>{@code path: "email"} -- resolves to the current authenticated user's email ({@link String})</li>
  *   <li>If the parameter is {@code required} and the user is anonymous, throws {@link UnauthorizedException}</li>
  * </ul>
  */
